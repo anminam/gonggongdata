@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
-import { AlertTriangle, ArrowRightLeft, CircleOff, Info, Sparkles, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Building2, CircleOff, Info, Sparkles, Wrench } from "lucide-react";
+import { ORG_PREFIX } from "@/lib/match";
 import type { browserClient } from "@/lib/supabase";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +42,7 @@ export const fmtShort = (s: string) =>
 /** 오늘(KST) 기준 n일 전 날짜를 YYYY-MM-DD로 */
 export const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toLocaleDateString("sv-SE", KST);
 
-export const NOTICE_TYPES = ["제공 중단/종료", "URL 변경", "API 변경", "일시 중단(점검)", "신규/추가", "기타"];
+export { NOTICE_TYPES } from "@/lib/match";
 
 // 공지 유형별 배지 모양. 색만으로 구분하지 않도록 아이콘·글자를 같이 쓴다.
 const TYPE_STYLE: Record<string, { icon: LucideIcon; className: string }> = {
@@ -67,11 +68,18 @@ export function TypeBadge({ type, className }: { type: string | null; className?
 export function Kw({ list }: { list: string[] }) {
   return (
     <span className="inline-flex flex-wrap gap-1">
-      {list.map((k) => (
-        <Badge key={k} variant="secondary" className="font-normal">
-          {k}
-        </Badge>
-      ))}
+      {list.map((k) =>
+        k.startsWith(ORG_PREFIX) ? (
+          <Badge key={k} variant="outline" className="font-normal">
+            <Building2 data-icon="inline-start" />
+            {k.slice(ORG_PREFIX.length)}
+          </Badge>
+        ) : (
+          <Badge key={k} variant="secondary" className="font-normal">
+            {k}
+          </Badge>
+        ),
+      )}
     </span>
   );
 }

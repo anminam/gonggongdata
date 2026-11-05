@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts";
 import { ArrowUpRight, CalendarDays, Database, MailCheck, Tags } from "lucide-react";
-import { matchKeywords } from "@/lib/match";
+import { hasAnyRule, matchNotice, type AlertRule } from "@/lib/match";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -17,9 +17,9 @@ const dailyConfig = { count: { label: "공지", color: "var(--primary)" } } sati
 const typeConfig = { count: { label: "공지", color: "var(--primary)" } } satisfies ChartConfig;
 
 export default function Overview({
-  ctx, notices, keywords, searchBody, go,
+  ctx, notices, rule, go,
 }: {
-  ctx: Ctx; notices: Notice[] | null; keywords: string[]; searchBody: boolean; go: (p: Page, f?: NoticeFilter) => void;
+  ctx: Ctx; notices: Notice[] | null; rule: AlertRule; go: (p: Page, f?: NoticeFilter) => void;
 }) {
   const [delivered, setDelivered] = useState<number | null>(null);
 
@@ -36,8 +36,8 @@ export default function Overview({
   const since30 = daysAgo(RANGE - 1);
   const recent30 = useMemo(() => list.filter((n) => (n.registered_at ?? "") >= since30), [list, since30]);
   const matched = useMemo(
-    () => (keywords.length ? list.map((n) => ({ n, hit: matchKeywords(n, keywords, searchBody) })).filter((x) => x.hit.length) : []),
-    [list, keywords, searchBody],
+    () => (hasAnyRule(rule) ? list.map((n) => ({ n, hit: matchNotice(n, rule) })).filter((x) => x.hit.length) : []),
+    [list, rule],
   );
 
   const daily = useMemo(() => {
@@ -58,6 +58,12 @@ export default function Overview({
 
   const lastCrawl = list.reduce<string | null>((m, n) => (!m || n.crawled_at > m ? n.crawled_at : m), null);
   const loading = notices === null;
+  const hasRule = hasAnyRule(rule);
+  const ruleDesc = [
+    rule.keywords.length ? `키워드 ${rule.keywords.length}개` : "",
+    rule.orgs.length ? `기관 ${rule.orgs.length}곳` : "",
+    rule.types ? `유형 ${rule.types.length}개` : "",
+  ].filter(Boolean).join(" · ");
 
   return (
     <>
@@ -72,9 +78,9 @@ export default function Overview({
             <StatCard icon={CalendarDays} label="최근 7일 공지" value={list.filter((n) => (n.registered_at ?? "") >= since7).length} hint="공지일 기준" />
             <StatCard
               icon={Tags}
-              label="내 키워드에 걸린 공지"
-              value={keywords.length ? matched.length : "–"}
-              hint={keywords.length ? `키워드 ${keywords.length}개 기준` : "키워드를 먼저 등록하세요"}
+              label="내 알림에 걸린 공지"
+              value={hasRule ? matched.length : "–"}
+              hint={hasRule ? `${ruleDesc} 기준` : "키워드나 기관을 먼저 등록하세요"}
             />
             <StatCard icon={MailCheck} label="내가 받은 알림" value={delivered ?? "…"} hint="지금까지 메일로 받은 공지 수" />
           </>
@@ -126,29 +132,29 @@ export default function Overview({
       </div>
 
       <SectionCard
-        title="내 키워드에 걸린 최근 공지"
-        description={keywords.length ? `키워드: ${keywords.join(", ")}` : undefined}
+        title="내 알림에 걸린 최근 공지"
+        description={hasRule ? ruleDesc + " 기준" : undefined}
         action={
-          keywords.length ? (
+          hasRule ? (
             <Button variant="outline" size="sm" onClick={() => go("notices", { mine: true })}>
               전체 보기 <ArrowUpRight />
             </Button>
           ) : undefined
         }
       >
-        {!keywords.length ? (
+        {!hasRule ? (
           <Empty className="border border-dashed">
             <EmptyHeader>
               <EmptyMedia variant="icon"><Tags /></EmptyMedia>
-              <EmptyTitle>아직 키워드가 없어요</EmptyTitle>
-              <EmptyDescription>관심 있는 기관이나 API 이름을 키워드로 등록하면 여기에 맞는 공지가 보여요.</EmptyDescription>
+              <EmptyTitle>아직 알림 조건이 없어요</EmptyTitle>
+              <EmptyDescription>관심 있는 기관을 구독하거나 API 이름을 키워드로 등록하면 여기에 맞는 공지가 보여요.</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button onClick={() => go("alerts")}>키워드 등록하기</Button>
+              <Button onClick={() => go("alerts")}>알림 설정하기</Button>
             </EmptyContent>
           </Empty>
         ) : !matched.length ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">아직 키워드에 걸린 공지가 없어요.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">아직 알림 조건에 걸린 공지가 없어요.</p>
         ) : (
           <ItemGroup>
             {matched.slice(0, 6).map(({ n, hit }, i) => (

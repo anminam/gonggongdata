@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AlertRule } from "@/lib/match";
 import type { Session } from "@supabase/supabase-js";
 import { useTheme } from "next-themes";
 import {
@@ -45,7 +46,9 @@ export default function AppShell({
   const [page, setPage] = useState<Page>("overview");
   const [notices, setNotices] = useState<Notice[] | null>(null);
   const [keywords, setKeywords] = useState<ListItem[]>([]);
+  const [orgs, setOrgs] = useState<ListItem[]>([]);
   const [searchBody, setSearchBody] = useState(false);
+  const [notifyTypes, setNotifyTypes] = useState<string[] | null>(null);
   const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>({});
 
   const loadNotices = useCallback(async () => {
@@ -59,12 +62,15 @@ export default function AppShell({
   }, [supabase]);
 
   const loadMine = useCallback(async () => {
-    const [k, s] = await Promise.all([
+    const [k, o, s] = await Promise.all([
       supabase.from("gd_keywords").select("id, keyword").eq("user_id", profile.user_id).order("id"),
-      supabase.from("gd_user_settings").select("search_body").eq("user_id", profile.user_id).maybeSingle(),
+      supabase.from("gd_org_subscriptions").select("id, org").eq("user_id", profile.user_id).order("org"),
+      supabase.from("gd_user_settings").select("search_body, notify_types").eq("user_id", profile.user_id).maybeSingle(),
     ]);
     setKeywords((k.data ?? []).map((x) => ({ id: x.id, value: x.keyword })));
+    setOrgs((o.data ?? []).map((x) => ({ id: x.id, value: x.org })));
     setSearchBody(!!s.data?.search_body);
+    setNotifyTypes(s.data?.notify_types ?? null);
   }, [supabase, profile.user_id]);
 
   useEffect(() => {
@@ -73,7 +79,11 @@ export default function AppShell({
   }, [loadNotices, loadMine]);
 
   const ctx = { supabase, session, profile };
-  const kw = keywords.map((k) => k.value);
+  // 서버 발송과 같은 알림 조건 (키워드 OR 구독 기관, 받을 유형만)
+  const rule = useMemo<AlertRule>(
+    () => ({ keywords: keywords.map((k) => k.value), orgs: orgs.map((o) => o.value), searchBody, types: notifyTypes }),
+    [keywords, orgs, searchBody, notifyTypes],
+  );
   const go = (p: Page, filter: NoticeFilter = {}) => {
     setNoticeFilter(filter);
     setPage(p);
@@ -83,7 +93,7 @@ export default function AppShell({
 
   return (
     <SidebarProvider>
-      <AppSidebar page={page} go={go} profile={profile} onLogout={onLogout} noticeCount={notices?.length} keywordCount={keywords.length} />
+      <AppSidebar page={page} go={go} profile={profile} onLogout={onLogout} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
@@ -96,9 +106,11 @@ export default function AppShell({
           </div>
         </header>
         <div className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 md:p-8">
-          {page === "overview" && <Overview ctx={ctx} notices={notices} keywords={kw} searchBody={searchBody} go={go} />}
-          {page === "notices" && <Notices notices={notices} keywords={kw} searchBody={searchBody} initial={noticeFilter} />}
-          {page === "alerts" && <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} searchBody={searchBody} reload={loadMine} />}
+          {page === "overview" && <Overview ctx={ctx} notices={notices} rule={rule} go={go} />}
+          {page === "notices" && <Notices notices={notices} rule={rule} initial={noticeFilter} />}
+          {page === "alerts" && (
+            <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} reload={loadMine} />
+          )}
           {page === "history" && <History ctx={ctx} />}
           {page === "admin" && profile.is_admin && <Admin ctx={ctx} onCrawled={loadNotices} />}
         </div>

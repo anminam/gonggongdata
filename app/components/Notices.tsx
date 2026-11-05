@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, FilterX, Search } from "lucide-react";
 import { classify } from "@/lib/classify";
-import { matchKeywords } from "@/lib/match";
+import { hasAnyRule, matchNotice, type AlertRule } from "@/lib/match";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -23,9 +23,9 @@ type Period = "7" | "30" | "all";
 const PAGE = 50;
 
 export default function Notices({
-  notices, keywords, searchBody, initial,
+  notices, rule, initial,
 }: {
-  notices: Notice[] | null; keywords: string[]; searchBody: boolean; initial: { type?: string; mine?: boolean };
+  notices: Notice[] | null; rule: AlertRule; initial: { type?: string; mine?: boolean };
 }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState(initial.type ?? "all");
@@ -35,6 +35,7 @@ export default function Notices({
   const [shown, setShown] = useState(PAGE);
   const [open, setOpen] = useState<Notice | null>(null);
   const list = notices ?? [];
+  const hasRule = hasAnyRule(rule);
 
   useEffect(() => setShown(PAGE), [q, type, org, period, mine]);
 
@@ -48,7 +49,7 @@ export default function Notices({
     const since = period === "all" ? "" : daysAgo(Number(period));
     const needle = q.trim().toLowerCase();
     return list
-      .map((n) => ({ n, hit: keywords.length ? matchKeywords(n, keywords, searchBody) : [] }))
+      .map((n) => ({ n, hit: hasRule ? matchNotice(n, rule) : [] }))
       .filter(({ n, hit }) => {
         if (since && (n.registered_at ?? "") < since) return false;
         if (type !== "all" && (n.notice_type || "기타") !== type) return false;
@@ -57,7 +58,7 @@ export default function Notices({
         if (needle && ![n.title, n.org, n.api_names].join(" ").toLowerCase().includes(needle)) return false;
         return true;
       });
-  }, [list, keywords, searchBody, q, type, org, period, mine]);
+  }, [list, rule, hasRule, q, type, org, period, mine]);
 
   const filtered = q || type !== "all" || org !== "all" || period !== "all" || mine;
   const reset = () => {
@@ -99,8 +100,8 @@ export default function Notices({
               <ToggleGroupItem value="all">전체</ToggleGroupItem>
             </ToggleGroup>
             <div className="flex items-center gap-2">
-              <Switch id="mine" checked={mine} onCheckedChange={setMine} disabled={!keywords.length} />
-              <Label htmlFor="mine">내 키워드만</Label>
+              <Switch id="mine" checked={mine} onCheckedChange={setMine} disabled={!hasRule} />
+              <Label htmlFor="mine">내 알림 조건만</Label>
             </div>
             <span className="ml-auto text-sm text-muted-foreground tabular-nums">
               {rows.length.toLocaleString()}건{filtered ? ` / 전체 ${list.length.toLocaleString()}건` : ""}
@@ -159,14 +160,14 @@ export default function Notices({
         )}
       </Card>
 
-      <NoticeSheet n={open} keywords={keywords} searchBody={searchBody} onClose={() => setOpen(null)} />
+      <NoticeSheet n={open} rule={rule} onClose={() => setOpen(null)} />
     </>
   );
 }
 
-function NoticeSheet({ n, keywords, searchBody, onClose }: { n: Notice | null; keywords: string[]; searchBody: boolean; onClose: () => void }) {
+function NoticeSheet({ n, rule, onClose }: { n: Notice | null; rule: AlertRule; onClose: () => void }) {
   const c = n ? classify(n.title, n.body ?? "") : null;
-  const hit = n && keywords.length ? matchKeywords(n, keywords, searchBody) : [];
+  const hit = n ? matchNotice(n, rule) : [];
   return (
     <Sheet open={!!n} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full gap-0 sm:max-w-xl">
@@ -189,7 +190,7 @@ function NoticeSheet({ n, keywords, searchBody, onClose }: { n: Notice | null; k
                       <dd><a className="break-all text-primary underline underline-offset-4" href={c.newUrl} target="_blank" rel="noreferrer">{c.newUrl}</a></dd>
                     </>
                   )}
-                  {hit.length > 0 && (<><dt className="text-muted-foreground">내 키워드</dt><dd><Kw list={hit} /></dd></>)}
+                  {hit.length > 0 && (<><dt className="text-muted-foreground">내 알림</dt><dd><Kw list={hit} /></dd></>)}
                   <dt className="text-muted-foreground">수집</dt><dd className="tabular-nums text-muted-foreground">{fmtDateTime(n.crawled_at)}</dd>
                 </dl>
                 <Button asChild className="w-full sm:w-auto">

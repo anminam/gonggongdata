@@ -1,7 +1,9 @@
 import * as cheerio from "cheerio";
 
 const BASE = "https://www.data.go.kr";
-const LIST_URL = `${BASE}/bbs/ntc/selectNoticeListView.do?nttApiYn=Y&pageIndex=1&pageUnit=30&searchOrder=REGIST_DT`;
+export const PAGE_SIZE = 30;
+const listUrl = (page: number) =>
+  `${BASE}/bbs/ntc/selectNoticeListView.do?nttApiYn=Y&pageIndex=${page}&pageUnit=${PAGE_SIZE}&searchOrder=REGIST_DT`;
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
@@ -27,9 +29,9 @@ async function get(url: string) {
 
 const clean = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** API 공지사항 목록 1페이지(최신 30건) */
-export async function fetchNoticeList(): Promise<ListItem[]> {
-  const $ = cheerio.load(await get(LIST_URL));
+/** API 공지사항 목록 한 페이지(최신순 30건). page는 1부터 */
+export async function fetchNoticeList(page = 1): Promise<ListItem[]> {
+  const $ = cheerio.load(await get(listUrl(page)));
   const items: ListItem[] = [];
   $("table tbody tr").each((_, tr) => {
     const row = $(tr);
@@ -49,7 +51,7 @@ export async function fetchNoticeList(): Promise<ListItem[]> {
       url: detailUrl(m[1]),
     });
   });
-  if (items.length === 0) throw new Error("공지 목록을 파싱하지 못했습니다 (페이지 구조 변경 가능성)");
+  if (items.length === 0 && page === 1) throw new Error("공지 목록을 파싱하지 못했습니다 (페이지 구조 변경 가능성)");
   return items;
 }
 

@@ -10,6 +10,7 @@ export type NoticeRow = {
   registered_at: string | null;
   body: string | null;
   url: string;
+  notice_type?: string | null;
 };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
