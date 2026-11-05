@@ -2,13 +2,11 @@ import { adminClient } from "./supabase";
 import { fetchNoticeList, fetchNoticeBody } from "./crawler";
 import { classify } from "./classify";
 import { renderEmail, sendMail, type NoticeRow } from "./mailer";
+import { matchKeywords } from "./match";
+
+export { matchKeywords };
 
 const LOOKBACK_DAYS = 7; // 키워드를 새로 추가한 사용자도 최근 7일 공지는 받음
-
-export function matchKeywords(n: NoticeRow, keywords: string[], searchBody: boolean) {
-  const hay = [n.title, n.api_names, n.org, searchBody ? n.body : ""].join(" ").toLowerCase();
-  return keywords.filter((k) => hay.includes(k.toLowerCase()));
-}
 
 export async function recentNotices(db = adminClient()) {
   const since = new Date(Date.now() - LOOKBACK_DAYS * 864e5).toISOString().slice(0, 10);
