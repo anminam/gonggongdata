@@ -1,0 +1,4 @@
+-- 이미 anminam-edu 프로젝트에 적용됨 (gd_gonggongdata_notice_init, gd_revoke_anon_helpers)
+-- 새 프로젝트에 다시 만들 때 참고용
+-- 테이블: gd_profiles, gd_user_settings, gd_keywords, gd_recipients, gd_notices, gd_deliveries, gd_run_logs
+-- 전체 SQL은 Supabase 대시보드 > Database > Migrations 에서 확인
