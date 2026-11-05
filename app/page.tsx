@@ -15,11 +15,17 @@ import AppShell, { ThemeToggle } from "./components/AppShell";
 export default function Home() {
   const supabase = useMemo(() => browserClient(), []);
   const [session, setSession] = useState<Session | null>(null);
+  // 로그인 정보를 처음 읽어 왔는지. 읽기 전에는 로그인 화면/승인 대기 화면을 그리지 않는다
+  const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+  // 프로필을 읽는 중이거나 실패했을 때 '승인 대기'로 잘못 보이지 않도록 상태를 따로 둔다
+  const [profileState, setProfileState] = useState<"idle" | "loading" | "ok" | "error">("idle");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       // 관리자가 'Gmail 발송 계정 연결'로 돌아온 직후: 갱신 토큰을 서버에 저장
@@ -35,21 +41,36 @@ export default function Home() {
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
+  // 토큰이 갱신될 때마다 session 객체가 바뀌므로, 사용자가 바뀔 때만 프로필을 다시 읽는다
+  const userId = session?.user.id ?? null;
+  const userEmail = session?.user.email ?? "";
+
   const loadProfile = useCallback(async () => {
-    if (!session) {
+    if (!userId) {
       setProfile(null);
-      setLoading(false);
+      setProfileState("idle");
       return;
     }
-    const uid = session.user.id;
-    let { data } = await supabase.from("gd_profiles").select("*").eq("user_id", uid).maybeSingle();
-    if (!data) {
-      await supabase.from("gd_profiles").insert({ user_id: uid, email: session.user.email ?? "" });
-      ({ data } = await supabase.from("gd_profiles").select("*").eq("user_id", uid).maybeSingle());
+    setProfileState("loading");
+    const read = () => supabase.from("gd_profiles").select("*").eq("user_id", userId).maybeSingle();
+    let { data, error } = await read();
+    if (!error && !data) {
+      // 처음 로그인한 사용자: 프로필 생성 (이미 있으면 중복 오류는 무시)
+      await supabase.from("gd_profiles").insert({ user_id: userId, email: userEmail });
+      ({ data, error } = await read());
+    }
+    if (!error && !data) {
+      // 토큰이 막 바뀌는 순간이면 빈 결과가 올 수 있어 토큰을 새로 받아 한 번 더 읽는다
+      await supabase.auth.refreshSession();
+      ({ data, error } = await read());
+    }
+    if (error || !data) {
+      setProfileState("error");
+      return;
     }
     setProfile(data as Profile);
-    setLoading(false);
-  }, [session, supabase]);
+    setProfileState("ok");
+  }, [userId, userEmail, supabase]);
 
   useEffect(() => {
     loadProfile();
@@ -58,7 +79,24 @@ export default function Home() {
   const login = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
   const logout = () => supabase.auth.signOut();
 
-  if (loading)
+  if (profileState === "error")
+    return (
+      <Gate>
+        <Card className="w-full max-w-md">
+          <CardHeader className="items-center text-center">
+            <CardTitle className="text-xl">프로필을 불러오지 못했어요</CardTitle>
+            <CardDescription>잠시 후 다시 시도해 주세요. 계속되면 로그아웃했다가 다시 로그인해 주세요.</CardDescription>
+          </CardHeader>
+          <Separator />
+          <CardFooter className="justify-center gap-2">
+            <Button variant="outline" onClick={loadProfile}><RefreshCw /> 다시 시도</Button>
+            <Button variant="ghost" onClick={logout}><LogOut /> 로그아웃</Button>
+          </CardFooter>
+        </Card>
+      </Gate>
+    );
+
+  if (!authReady || (session && profileState !== "ok"))
     return (
       <Gate>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
