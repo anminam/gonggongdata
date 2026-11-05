@@ -30,3 +30,11 @@ cp .env.example .env.local   # 값 채우기
 npm install
 npm run dev
 ```
+
+## 테스트
+```bash
+npm test            # 단위 테스트 (분류·매칭·메일·크롤링 로직, 네트워크 없음)
+npm run test:live   # 실제 data.go.kr 접속 테스트 (읽기 전용, DB 저장·메일 발송 없음)
+npm run typecheck
+```
+GitHub `main` 푸시·PR마다 GitHub Actions(`.github/workflows/test.yml`)가 타입 체크와 테스트를 자동으로 돌린다.

@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { classify } from "./classify";
 import { adminClient } from "./supabase";
+import { ORG_PREFIX } from "./match";
 
 export type NoticeRow = {
   notice_id: string;
@@ -33,17 +34,17 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
       ["조치", c.action],
     ];
     if (c.newUrl) rows.push(["신규 URL", c.newUrl]);
-    rows.push(["매칭 키워드", n.matched.join(", ")]);
+    rows.push(["알림 이유", n.matched.map((m) => (m.startsWith(ORG_PREFIX) ? `기관 ${m.slice(ORG_PREFIX.length)}` : m)).join(", ")]);
     return rows.map(([k, v]) => `${k}: ${v}`).join("\n") + `\n링크: ${n.url}`;
   });
 
-  // ---- HTML 버전 (메일 프로그램 호환을 위해 표 + 인라인 스타일) ----
-  const font = `-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif`;
+  // ---- HTML 버전 (메일 프로그램 호환을 위해 표 + 인라인 스타일, 화면과 같은 흑백 테마) ----
+  const font = `-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif`;
   const counts = new Map<string, number>();
   for (const { c } of classified) counts.set(c.type, (counts.get(c.type) ?? 0) + 1);
   const summary = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([t, k]) => `${badge(t)}<span style="color:#475569;font-size:13px;margin:0 12px 0 4px">${k}건</span>`)
+    .map(([t, k]) => `<span style="display:inline-block;margin:0 14px 6px 0">${badge(t)}<span style="color:${C.muted};font-size:13px;margin-left:6px">${k}건</span></span>`)
     .join("");
 
   const cards = classified
@@ -53,29 +54,24 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
         ["API", esc(n.api_names || "-")],
         ["공지일", esc(n.registered_at ?? "-")],
         ["영향", esc(c.impact)],
-        ["조치", `<b style="color:#0f172a">${esc(c.action)}</b>`],
+        ["조치", `<b style="color:${C.text}">${esc(c.action)}</b>`],
       ];
-      if (c.newUrl) rows.push(["신규 URL", `<a href="${esc(c.newUrl)}" style="color:#2563eb;word-break:break-all">${esc(c.newUrl)}</a>`]);
-      rows.push([
-        "키워드",
-        n.matched
-          .map((k) => `<span style="display:inline-block;background:#eff4ff;color:#2563eb;border-radius:4px;padding:1px 6px;font-size:12px;font-weight:600;margin:0 4px 2px 0">${esc(k)}</span>`)
-          .join(""),
-      ]);
+      if (c.newUrl) rows.push(["신규 URL", `<a href="${esc(c.newUrl)}" style="color:${C.text};text-decoration:underline;word-break:break-all">${esc(c.newUrl)}</a>`]);
+      rows.push(["알림 이유", n.matched.map(reasonChip).join("")]);
       return (
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;margin:0 0 14px;background:#ffffff">` +
-        `<tr><td style="padding:16px 18px 6px">${badge(c.type)}` +
-        `<div style="font-size:16px;font-weight:700;color:#0f172a;line-height:1.45;margin-top:8px">${esc(n.title)}</div></td></tr>` +
-        `<tr><td style="padding:6px 18px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5">` +
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${C.border};border-radius:12px;margin:0 0 12px;background:${C.card}">` +
+        `<tr><td style="padding:18px 20px 4px">${badge(c.type)}` +
+        `<div style="font-size:16px;font-weight:600;color:${C.text};line-height:1.45;margin-top:10px">${esc(n.title)}</div></td></tr>` +
+        `<tr><td style="padding:8px 20px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.55">` +
         rows
           .map(
             ([k, v]) =>
-              `<tr><td valign="top" style="width:64px;padding:4px 0;color:#64748b;white-space:nowrap">${k}</td>` +
-              `<td valign="top" style="padding:4px 0;color:#334155">${v}</td></tr>`,
+              `<tr><td valign="top" style="width:72px;padding:4px 0;color:${C.muted};white-space:nowrap">${k}</td>` +
+              `<td valign="top" style="padding:4px 0;color:${C.text2}">${v}</td></tr>`,
           )
           .join("") +
         `</table></td></tr>` +
-        `<tr><td style="padding:10px 18px 16px"><a href="${esc(n.url)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:8px 14px;border-radius:6px">공지 원문 보기 →</a></td></tr>` +
+        `<tr><td style="padding:12px 20px 18px"><a href="${esc(n.url)}" style="display:inline-block;background:${C.primary};color:#ffffff;text-decoration:none;font-size:13px;font-weight:500;padding:9px 16px;border-radius:8px">공지 원문 보기 →</a></td></tr>` +
         `</table>`
       );
     })
@@ -83,21 +79,26 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
 
   const site = "https://gonggongdata.anminam.com";
   const html =
-    `<div style="background:#f4f6f9;padding:24px 12px;font-family:${font}">` +
+    `<div style="background:${C.bg};padding:28px 12px;font-family:${font};color:${C.text}">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;margin:0 auto">` +
-    `<tr><td style="background:#2563eb;border-radius:12px 12px 0 0;padding:20px 22px;color:#ffffff">` +
-    `<div style="font-size:12px;opacity:.85;letter-spacing:.02em">공공데이터 API 공지 알림${test ? " · 테스트" : ""}</div>` +
-    `<div style="font-size:20px;font-weight:700;margin-top:4px">변경 공지 ${notices.length}건이 감지됐어요</div>` +
-    `<div style="font-size:13px;opacity:.85;margin-top:2px">${today} 기준 · 내 키워드에 걸린 공지</div>` +
+    // 머리말: 화면 사이드바 로고와 같은 검은 사각 아이콘 + 서비스 이름
+    `<tr><td style="padding:0 4px 16px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
+    `<td style="width:32px;height:32px;background:${C.primary};border-radius:8px;text-align:center;vertical-align:middle;color:#ffffff;font-size:15px">🔔</td>` +
+    `<td style="padding-left:10px;font-size:14px;font-weight:600;color:${C.text}">공공데이터 알림<div style="font-size:12px;font-weight:400;color:${C.muted}">API 공지 모니터링${test ? " · 테스트 발송" : ""}</div></td>` +
+    `</tr></table></td></tr>` +
+    // 요약 카드
+    `<tr><td style="background:${C.card};border:1px solid ${C.border};border-radius:12px;padding:20px 22px">` +
+    `<div style="font-size:13px;color:${C.muted}">${today} 기준 · 내 알림 조건에 걸린 공지</div>` +
+    `<div style="font-size:22px;font-weight:600;letter-spacing:-0.01em;margin:4px 0 14px">변경 공지 ${notices.length}건이 감지됐어요</div>` +
+    `<div>${summary}</div>` +
     `</td></tr>` +
-    `<tr><td style="background:#ffffff;padding:14px 22px;border:1px solid #e2e8f0;border-top:0">${summary}</td></tr>` +
-    `<tr><td style="padding:16px 0 0">${cards}</td></tr>` +
-    `<tr><td style="padding:8px 4px 0;color:#94a3b8;font-size:12px;line-height:1.6">` +
-    `이 메일은 <a href="${site}" style="color:#64748b">gonggongdata.anminam.com</a>에서 설정한 키워드로 자동 발송됐어요. ` +
-    `키워드나 수신 주소는 <a href="${site}" style="color:#64748b">알림 설정</a>에서 바꿀 수 있어요.` +
+    `<tr><td style="padding:12px 0 0">${cards}</td></tr>` +
+    `<tr><td style="padding:8px 4px 0;color:${C.faint};font-size:12px;line-height:1.7">` +
+    `이 메일은 <a href="${site}" style="color:${C.muted}">gonggongdata.anminam.com</a>에서 설정한 알림 조건(키워드·구독 기관·받을 유형)으로 자동 발송됐어요. ` +
+    `조건이나 수신 주소는 <a href="${site}" style="color:${C.muted}">알림 설정</a>에서 바꿀 수 있어요.` +
     `</td></tr></table></div>`;
 
-  const footer = `이 메일은 gonggongdata.anminam.com 에서 설정한 키워드로 자동 발송되었습니다.`;
+  const footer = `이 메일은 gonggongdata.anminam.com 에서 설정한 알림 조건으로 자동 발송되었습니다.`;
   return {
     subject,
     text: `🚨 공공데이터 API 변경공지 감지 (${notices.length}건)\n\n${textBlocks.join("\n\n---\n\n")}\n\n${footer}\n${site}`,
@@ -105,17 +106,41 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
   };
 }
 
-// 유형 배지 (색 + 글자). 화면의 배지 색과 맞춘다.
-const BADGE: Record<string, [string, string]> = {
-  "제공 중단/종료": ["#fef2f2", "#b91c1c"],
-  "URL 변경": ["#fff4ed", "#c2410c"],
-  "일시 중단(점검)": ["#fefce8", "#a16207"],
-  "API 변경": ["#eff6ff", "#1d4ed8"],
-  "신규/추가": ["#ecfdf3", "#15803d"],
+// 화면(shadcn neutral 테마)과 맞춘 색
+export const MAIL_COLORS = {
+  bg: "#fafafa",
+  card: "#ffffff",
+  border: "#e5e5e5",
+  text: "#0a0a0a",
+  text2: "#404040",
+  muted: "#737373",
+  faint: "#a3a3a3",
+  primary: "#171717",
+  chip: "#f5f5f5",
+};
+const C = MAIL_COLORS;
+
+// 유형 배지 (색 + 아이콘 글자). 화면의 배지 색과 맞춘다. 색만으로 구분하지 않도록 글자를 같이 쓴다.
+const BADGE: Record<string, [bg: string, fg: string, border: string]> = {
+  "제공 중단/종료": ["#fef2f2", "#b91c1c", "#fecaca"],
+  "URL 변경": ["#fff7ed", "#c2410c", "#fed7aa"],
+  "일시 중단(점검)": ["#fffbeb", "#b45309", "#fde68a"],
+  "API 변경": ["#eff6ff", "#1d4ed8", "#bfdbfe"],
+  "신규/추가": ["#ecfdf5", "#047857", "#a7f3d0"],
 };
 function badge(type: string) {
-  const [bg, fg] = BADGE[type] ?? ["#f1f5f9", "#475569"];
-  return `<span style="display:inline-block;background:${bg};color:${fg};border-radius:5px;padding:2px 8px;font-size:12px;font-weight:700">${esc(type)}</span>`;
+  const [bg, fg, bd] = BADGE[type] ?? [C.chip, C.text2, C.border];
+  return `<span style="display:inline-block;background:${bg};color:${fg};border:1px solid ${bd};border-radius:999px;padding:1px 9px;font-size:12px;font-weight:500;line-height:18px">${esc(type)}</span>`;
+}
+
+// 알림 이유 칩: 키워드는 회색, 구독 기관은 테두리 + 🏢
+function reasonChip(reason: string) {
+  const org = reason.startsWith(ORG_PREFIX);
+  const label = org ? `🏢 ${reason.slice(ORG_PREFIX.length)}` : reason;
+  const style = org
+    ? `background:${C.card};border:1px solid ${C.border};color:${C.text2}`
+    : `background:${C.chip};border:1px solid ${C.chip};color:${C.text2}`;
+  return `<span style="display:inline-block;${style};border-radius:999px;padding:1px 9px;font-size:12px;line-height:18px;margin:0 4px 4px 0">${esc(label)}</span>`;
 }
 
 // 관리자가 Google 로그인으로 연결한 Gmail 계정(gd_mail_sender)으로 발송.

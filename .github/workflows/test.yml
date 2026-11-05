@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 타입 체크
+        run: npm run typecheck
+      - name: 단위 테스트
+        run: npm test
+      # 실제 data.go.kr 접속 테스트. 사이트가 잠깐 느리거나 막혀도 전체 결과를 실패로 만들지 않는다
+      - name: 크롤러 실제 접속 테스트
+        run: npm run test:live
+        continue-on-error: true
