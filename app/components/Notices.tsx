@@ -1,9 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ExternalLink, FilterX, Search } from "lucide-react";
 import { classify } from "@/lib/classify";
 import { matchKeywords } from "@/lib/match";
-import { daysAgo, fmtDateTime, Kw, Notice, NOTICE_TYPES, PageHead, TypeBadge } from "./ui";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { daysAgo, fmtDateTime, Kw, Notice, NOTICE_TYPES, PageHeader, TypeBadge } from "./shared";
 
 type Period = "7" | "30" | "all";
 const PAGE = 50;
@@ -11,158 +25,190 @@ const PAGE = 50;
 export default function Notices({
   notices, keywords, searchBody, initial,
 }: {
-  notices: Notice[]; keywords: string[]; searchBody: boolean; initial: { type?: string; mine?: boolean };
+  notices: Notice[] | null; keywords: string[]; searchBody: boolean; initial: { type?: string; mine?: boolean };
 }) {
   const [q, setQ] = useState("");
-  const [type, setType] = useState(initial.type ?? "");
-  const [org, setOrg] = useState("");
+  const [type, setType] = useState(initial.type ?? "all");
+  const [org, setOrg] = useState("all");
   const [period, setPeriod] = useState<Period>("all");
   const [mine, setMine] = useState(!!initial.mine);
   const [shown, setShown] = useState(PAGE);
   const [open, setOpen] = useState<Notice | null>(null);
+  const list = notices ?? [];
 
   useEffect(() => setShown(PAGE), [q, type, org, period, mine]);
 
   const orgs = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const n of notices) if (n.org) counts.set(n.org, (counts.get(n.org) ?? 0) + 1);
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([o]) => o);
-  }, [notices]);
+    for (const n of list) if (n.org) counts.set(n.org, (counts.get(n.org) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [list]);
 
   const rows = useMemo(() => {
     const since = period === "all" ? "" : daysAgo(Number(period));
     const needle = q.trim().toLowerCase();
-    return notices
+    return list
       .map((n) => ({ n, hit: keywords.length ? matchKeywords(n, keywords, searchBody) : [] }))
       .filter(({ n, hit }) => {
         if (since && (n.registered_at ?? "") < since) return false;
-        if (type && (n.notice_type || "기타") !== type) return false;
-        if (org && n.org !== org) return false;
+        if (type !== "all" && (n.notice_type || "기타") !== type) return false;
+        if (org !== "all" && n.org !== org) return false;
         if (mine && !hit.length) return false;
         if (needle && ![n.title, n.org, n.api_names].join(" ").toLowerCase().includes(needle)) return false;
         return true;
       });
-  }, [notices, keywords, searchBody, q, type, org, period, mine]);
+  }, [list, keywords, searchBody, q, type, org, period, mine]);
 
+  const filtered = q || type !== "all" || org !== "all" || period !== "all" || mine;
   const reset = () => {
-    setQ(""); setType(""); setOrg(""); setPeriod("all"); setMine(false);
+    setQ(""); setType("all"); setOrg("all"); setPeriod("all"); setMine(false);
   };
-  const filtered = q || type || org || period !== "all" || mine;
 
   return (
     <>
-      <PageHead title="공지 목록" desc="수집한 공공데이터포털 API 공지사항이에요. 행을 누르면 자세히 볼 수 있어요." />
-      <section className="card">
-        <div className="filters">
-          <input type="search" placeholder="제목, 기관, API명 검색" value={q} onChange={(e) => setQ(e.target.value)} aria-label="검색" />
-          <select value={type} onChange={(e) => setType(e.target.value)} aria-label="유형">
-            <option value="">모든 유형</option>
-            {NOTICE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <select value={org} onChange={(e) => setOrg(e.target.value)} aria-label="기관" style={{ maxWidth: 200 }}>
-            <option value="">모든 기관</option>
-            {orgs.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
-          <div className="seg" role="group" aria-label="기간">
-            {([["7", "7일"], ["30", "30일"], ["all", "전체"]] as [Period, string][]).map(([v, l]) => (
-              <button key={v} className={period === v ? "on" : ""} onClick={() => setPeriod(v)}>{l}</button>
-            ))}
+      <PageHeader title="공지 목록" description="수집한 공공데이터포털 API 공지사항이에요. 행을 누르면 자세히 볼 수 있어요." />
+
+      <Card className="gap-0 py-0">
+        <CardHeader className="gap-3 border-b py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <InputGroup className="min-w-[220px] flex-1">
+              <InputGroupAddon><Search /></InputGroupAddon>
+              <InputGroupInput placeholder="제목, 기관, API명 검색" value={q} onChange={(e) => setQ(e.target.value)} aria-label="검색" />
+            </InputGroup>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className="w-[150px]" aria-label="유형"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">모든 유형</SelectItem>
+                {NOTICE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={org} onValueChange={setOrg}>
+              <SelectTrigger className="w-[180px]" aria-label="기관"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">모든 기관</SelectItem>
+                {orgs.map(([o, c]) => (
+                  <SelectItem key={o} value={o}>{o} <span className="text-muted-foreground">({c})</span></SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <label className="toggle">
-            <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} disabled={!keywords.length} />
-            내 키워드만
-          </label>
-          {filtered && <button className="ghost sm" onClick={reset}>초기화</button>}
-        </div>
-        <div style={{ padding: "10px 18px", color: "var(--muted)", fontSize: 13 }}>
-          {rows.length.toLocaleString()}건{filtered ? ` (전체 ${notices.length.toLocaleString()}건 중)` : ""}
-        </div>
-        {!rows.length ? (
-          <div className="empty">조건에 맞는 공지가 없어요.</div>
-        ) : (
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th style={{ width: 104 }}>공지일</th>
-                  <th style={{ width: 120 }}>유형</th>
-                  <th>제목</th>
-                  <th className="hide-sm" style={{ width: 180 }}>기관</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <ToggleGroup type="single" variant="outline" size="sm" value={period} onValueChange={(v) => v && setPeriod(v as Period)} aria-label="기간">
+              <ToggleGroupItem value="7">7일</ToggleGroupItem>
+              <ToggleGroupItem value="30">30일</ToggleGroupItem>
+              <ToggleGroupItem value="all">전체</ToggleGroupItem>
+            </ToggleGroup>
+            <div className="flex items-center gap-2">
+              <Switch id="mine" checked={mine} onCheckedChange={setMine} disabled={!keywords.length} />
+              <Label htmlFor="mine">내 키워드만</Label>
+            </div>
+            <span className="ml-auto text-sm text-muted-foreground tabular-nums">
+              {rows.length.toLocaleString()}건{filtered ? ` / 전체 ${list.length.toLocaleString()}건` : ""}
+            </span>
+            {filtered && (
+              <Button variant="ghost" size="sm" onClick={reset}>
+                <FilterX /> 초기화
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="px-0">
+          {notices === null ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : !rows.length ? (
+            <p className="py-16 text-center text-sm text-muted-foreground">조건에 맞는 공지가 없어요.</p>
+          ) : (
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="w-[110px] pl-4">공지일</TableHead>
+                  <TableHead className="w-[150px]">유형</TableHead>
+                  <TableHead>제목</TableHead>
+                  <TableHead className="hidden w-[180px] pr-4 md:table-cell">기관</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.slice(0, shown).map(({ n, hit }) => (
-                  <tr key={n.notice_id} className="click" onClick={() => setOpen(n)}>
-                    <td className="nowrap tnum">{n.registered_at ?? "-"}</td>
-                    <td><TypeBadge type={n.notice_type} /></td>
-                    <td>
-                      <div className="title">{n.title}</div>
-                      {(n.api_names || hit.length > 0) && (
-                        <div className="sub">
+                  <TableRow key={n.notice_id} className="cursor-pointer" onClick={() => setOpen(n)}>
+                    <TableCell className="pl-4 align-top tabular-nums text-muted-foreground">{n.registered_at ?? "-"}</TableCell>
+                    <TableCell className="align-top"><TypeBadge type={n.notice_type} /></TableCell>
+                    <TableCell className="max-w-0 whitespace-normal">
+                      <div className="font-medium leading-snug">{n.title}</div>
+                      {(hit.length > 0 || (n.api_names && n.api_names !== n.title)) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                           {hit.length > 0 && <Kw list={hit} />}
-                          {n.api_names && n.api_names !== n.title ? n.api_names : ""}
+                          {n.api_names && n.api_names !== n.title && <span className="truncate">{n.api_names}</span>}
                         </div>
                       )}
-                    </td>
-                    <td className="hide-sm" style={{ color: "var(--text-2)" }}>{n.org ?? "-"}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="hidden pr-4 align-top text-muted-foreground md:table-cell">{n.org ?? "-"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
         {rows.length > shown && (
-          <div style={{ padding: 14, textAlign: "center", borderTop: "1px solid var(--line-2)" }}>
-            <button onClick={() => setShown((s) => s + PAGE)}>더 보기 ({(rows.length - shown).toLocaleString()}건 남음)</button>
-          </div>
+          <CardFooter className="justify-center border-t py-3">
+            <Button variant="outline" onClick={() => setShown((s) => s + PAGE)}>
+              더 보기 <Badge variant="secondary">{(rows.length - shown).toLocaleString()}</Badge>
+            </Button>
+          </CardFooter>
         )}
-      </section>
-      {open && <NoticeDrawer n={open} keywords={keywords} searchBody={searchBody} onClose={() => setOpen(null)} />}
+      </Card>
+
+      <NoticeSheet n={open} keywords={keywords} searchBody={searchBody} onClose={() => setOpen(null)} />
     </>
   );
 }
 
-function NoticeDrawer({ n, keywords, searchBody, onClose }: { n: Notice; keywords: string[]; searchBody: boolean; onClose: () => void }) {
-  const c = classify(n.title, n.body ?? "");
-  const hit = keywords.length ? matchKeywords(n, keywords, searchBody) : [];
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+function NoticeSheet({ n, keywords, searchBody, onClose }: { n: Notice | null; keywords: string[]; searchBody: boolean; onClose: () => void }) {
+  const c = n ? classify(n.title, n.body ?? "") : null;
+  const hit = n && keywords.length ? matchKeywords(n, keywords, searchBody) : [];
   return (
-    <>
-      <div className="drawer-bg" onClick={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label="공지 상세">
-        <div className="drawer-head">
-          <h2>{n.title}</h2>
-          <button className="ghost sm" onClick={onClose} aria-label="닫기">✕</button>
-        </div>
-        <div className="drawer-body">
-          <dl className="kv">
-            <dt>유형</dt><dd><TypeBadge type={c.type} /></dd>
-            <dt>기관</dt><dd>{n.org ?? "-"}</dd>
-            <dt>API</dt><dd>{n.api_names || "-"}</dd>
-            <dt>공지일</dt><dd className="tnum">{n.registered_at ?? "-"}</dd>
-            <dt>영향</dt><dd>{c.impact}</dd>
-            <dt>조치</dt><dd>{c.action}</dd>
-            {c.newUrl && (<><dt>신규 URL</dt><dd><a href={c.newUrl} target="_blank" rel="noreferrer">{c.newUrl}</a></dd></>)}
-            {hit.length > 0 && (<><dt>내 키워드</dt><dd><Kw list={hit} /></dd></>)}
-            <dt>수집</dt><dd className="tnum" style={{ color: "var(--muted)" }}>{fmtDateTime(n.crawled_at)}</dd>
-          </dl>
-          <a className="btn primary" href={n.url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", height: 36, padding: "0 14px", borderRadius: 8, background: "var(--primary)", color: "#fff", alignItems: "center", textDecoration: "none", fontWeight: 500 }}>
-            공지 원문 보기 ↗
-          </a>
-          {n.body && (
-            <>
-              <h3 style={{ fontSize: 14, margin: "24px 0 8px" }}>본문</h3>
-              <div className="body-text">{n.body}</div>
-            </>
-          )}
-        </div>
-      </aside>
-    </>
+    <Sheet open={!!n} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full gap-0 sm:max-w-xl">
+        {n && c && (
+          <>
+            <SheetHeader className="border-b pr-12">
+              <div><TypeBadge type={c.type} /></div>
+              <SheetTitle className="text-lg leading-snug">{n.title}</SheetTitle>
+              <SheetDescription>{n.org ?? "기관 미상"} · {n.registered_at ?? "-"}</SheetDescription>
+            </SheetHeader>
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="space-y-6 p-4">
+                <dl className="grid grid-cols-[84px_1fr] gap-x-4 gap-y-3 text-sm">
+                  <dt className="text-muted-foreground">API</dt><dd>{n.api_names || "-"}</dd>
+                  <dt className="text-muted-foreground">영향</dt><dd>{c.impact}</dd>
+                  <dt className="text-muted-foreground">조치</dt><dd className="font-medium">{c.action}</dd>
+                  {c.newUrl && (
+                    <>
+                      <dt className="text-muted-foreground">신규 URL</dt>
+                      <dd><a className="break-all text-primary underline underline-offset-4" href={c.newUrl} target="_blank" rel="noreferrer">{c.newUrl}</a></dd>
+                    </>
+                  )}
+                  {hit.length > 0 && (<><dt className="text-muted-foreground">내 키워드</dt><dd><Kw list={hit} /></dd></>)}
+                  <dt className="text-muted-foreground">수집</dt><dd className="tabular-nums text-muted-foreground">{fmtDateTime(n.crawled_at)}</dd>
+                </dl>
+                <Button asChild className="w-full sm:w-auto">
+                  <a href={n.url} target="_blank" rel="noreferrer">공지 원문 보기 <ExternalLink /></a>
+                </Button>
+                {n.body && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-medium">본문</h3>
+                      <p className="whitespace-pre-wrap rounded-lg bg-muted/50 p-4 text-sm leading-relaxed text-muted-foreground">{n.body}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </ScrollArea>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
