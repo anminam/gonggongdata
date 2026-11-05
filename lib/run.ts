@@ -79,38 +79,11 @@ export async function runDaily() {
       newCount++;
     }
 
-    // 3. 사용자별 발송
+    // 3. 사용자별 발송 (이미 보낸 공지는 빼고)
     const notices = await recentNotices(db);
-    const { data: users } = await db
-      .from("gd_profiles")
-      .select(
-        "user_id, gd_user_settings(search_body, enabled, notify_types), gd_keywords(keyword), gd_org_subscriptions(org), gd_recipients(email)",
-      )
-      .eq("status", "approved");
-
-    for (const u of users ?? []) {
-      const settings = Array.isArray(u.gd_user_settings) ? u.gd_user_settings[0] : u.gd_user_settings;
-      if (settings && settings.enabled === false) continue;
-      const keywords = (u.gd_keywords ?? []).map((k: { keyword: string }) => k.keyword);
-      const orgs = (u.gd_org_subscriptions ?? []).map((o: { org: string }) => o.org);
-      const recipients = (u.gd_recipients ?? []).map((r: { email: string }) => r.email);
-      const rule = toRule(keywords, orgs, settings);
-      if (!hasAnyRule(rule) || !recipients.length) continue;
-
-      const { data: sent } = await db.from("gd_deliveries").select("notice_id").eq("user_id", u.user_id);
-      const sentIds = new Set((sent ?? []).map((s) => s.notice_id));
-
-      const hits = notices
-        .filter((n) => !sentIds.has(n.notice_id))
-        .map((n) => ({ ...n, matched: matchNotice(n, rule) }))
-        .filter((n) => n.matched.length > 0);
-      if (!hits.length) continue; // 해당 없으면 메일 안 보냄
-
-      await sendMail(recipients, renderEmail(hits));
-      emails++;
-      await db.from("gd_deliveries").insert(
-        hits.map((h) => ({ user_id: u.user_id, notice_id: h.notice_id, matched_keywords: h.matched, recipients })),
-      );
+    for (const u of await loadAlertUsers(db)) {
+      const r = await deliverToUser(db, u, notices, { resend: false });
+      if (r.status === "sent") emails++;
     }
 
     await db
@@ -126,4 +99,106 @@ export async function runDaily() {
       .eq("id", log?.id);
     throw e;
   }
+}
+
+/** 알림 조건에 걸린 공지 고르기. sentIds를 주면 이미 보낸 공지는 뺀다 (null이면 다시 보내기) */
+export function pickHits<T extends NoticeRow>(notices: T[], rule: AlertRule, sentIds: Set<string> | null) {
+  return notices
+    .filter((n) => !sentIds?.has(n.notice_id))
+    .map((n) => ({ ...n, matched: matchNotice(n, rule) }))
+    .filter((n) => n.matched.length > 0);
+}
+
+export type AlertUser = {
+  user_id: string;
+  email: string;
+  enabled: boolean;
+  rule: AlertRule;
+  recipients: string[];
+};
+
+/** 승인된 사용자와 알림 조건. userIds를 주면 그 사용자만 */
+export async function loadAlertUsers(db: Db, userIds?: string[]): Promise<AlertUser[]> {
+  let q = db
+    .from("gd_profiles")
+    .select(
+      "user_id, email, gd_user_settings(search_body, enabled, notify_types), gd_keywords(keyword), gd_org_subscriptions(org), gd_recipients(email)",
+    )
+    .eq("status", "approved");
+  if (userIds) q = q.in("user_id", userIds);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map((u) => {
+    const settings = Array.isArray(u.gd_user_settings) ? u.gd_user_settings[0] : u.gd_user_settings;
+    return {
+      user_id: u.user_id,
+      email: u.email,
+      enabled: !(settings && settings.enabled === false),
+      rule: toRule(
+        (u.gd_keywords ?? []).map((k: { keyword: string }) => k.keyword),
+        (u.gd_org_subscriptions ?? []).map((o: { org: string }) => o.org),
+        settings,
+      ),
+      recipients: (u.gd_recipients ?? []).map((r: { email: string }) => r.email),
+    };
+  });
+}
+
+export type DeliverResult = {
+  user_id: string;
+  email: string;
+  status: "sent" | "skipped";
+  count: number;
+  reason?: string;
+};
+
+/**
+ * 한 사용자에게 걸린 공지를 메일 1통으로 보낸다.
+ * resend=true면 이미 보낸 공지도 다시 보내고(관리자 강제 재발송), 발송 기록은 새로 만들지 않고 시각만 갱신한다.
+ * 관리자 재발송은 사용자가 '알림 받기'를 꺼 두었어도 보낸다.
+ */
+export async function deliverToUser(db: Db, u: AlertUser, notices: NoticeRow[], { resend }: { resend: boolean }): Promise<DeliverResult> {
+  const base = { user_id: u.user_id, email: u.email };
+  if (!resend && !u.enabled) return { ...base, status: "skipped", count: 0, reason: "알림 꺼짐" };
+  if (!hasAnyRule(u.rule)) return { ...base, status: "skipped", count: 0, reason: "알림 조건 없음" };
+  if (!u.recipients.length) return { ...base, status: "skipped", count: 0, reason: "수신 주소 없음" };
+
+  let sentIds: Set<string> | null = null;
+  if (!resend) {
+    const { data: sent, error } = await db.from("gd_deliveries").select("notice_id").eq("user_id", u.user_id);
+    if (error) throw error;
+    sentIds = new Set((sent ?? []).map((s) => s.notice_id));
+  }
+  const hits = pickHits(notices, u.rule, sentIds);
+  if (!hits.length) return { ...base, status: "skipped", count: 0, reason: resend ? "최근 7일 걸린 공지 없음" : "새 공지 없음" };
+
+  await sendMail(u.recipients, renderEmail(hits));
+  const { error } = await db.from("gd_deliveries").upsert(
+    hits.map((h) => ({
+      user_id: u.user_id,
+      notice_id: h.notice_id,
+      matched_keywords: h.matched,
+      recipients: u.recipients,
+      sent_at: new Date().toISOString(),
+    })),
+    { onConflict: "user_id,notice_id" },
+  );
+  if (error) throw error;
+  return { ...base, status: "sent", count: hits.length };
+}
+
+/** 관리자 강제 재발송: 선택한 사용자에게 최근 7일 걸린 공지를 (이미 보낸 것 포함) 다시 보낸다 */
+export async function resendRecent(userIds: string[]) {
+  const db = adminClient();
+  const notices = await recentNotices(db);
+  const users = await loadAlertUsers(db, userIds);
+  const results: DeliverResult[] = [];
+  for (const u of users) {
+    try {
+      results.push(await deliverToUser(db, u, notices, { resend: true }));
+    } catch (e) {
+      results.push({ user_id: u.user_id, email: u.email, status: "skipped", count: 0, reason: `실패: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  }
+  return results;
 }

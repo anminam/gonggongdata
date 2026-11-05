@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Check, Clock, Mail, MailWarning, Play, RefreshCw, UserCheck, Users, X } from "lucide-react";
+import { Ban, Check, Clock, Mail, MailWarning, Play, RefreshCw, RotateCw, Send, UserCheck, Users, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -178,6 +180,8 @@ export default function Admin({ ctx, onCrawled }: { ctx: Ctx; onCrawled: () => v
         </SectionCard>
       </div>
 
+      <ResendCard ctx={ctx} users={approved} disabled={sender === null} onDone={load} />
+
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
           <CardTitle>사용자</CardTitle>
@@ -255,5 +259,116 @@ export default function Admin({ ctx, onCrawled }: { ctx: Ctx; onCrawled: () => v
         </CardContent>
       </Card>
     </>
+  );
+}
+
+type ResendResult = { user_id: string; email: string; status: "sent" | "skipped"; count: number; reason?: string };
+
+/** 관리자 강제 재발송: 고른 사용자에게 최근 7일 걸린 공지를 이미 보낸 것까지 다시 보낸다 */
+function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile[]; disabled: boolean; onDone: () => void }) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [results, setResults] = useState<ResendResult[] | null>(null);
+  const allOn = users.length > 0 && users.every((u) => picked.has(u.user_id));
+
+  const toggle = (id: string, on: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const send = async () => {
+    setConfirm(false);
+    setSending(true);
+    setResults(null);
+    const id = toast.loading(`${picked.size}명에게 다시 보내는 중…`);
+    try {
+      const res = await fetch("/api/admin/resend", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ctx.session.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ user_ids: [...picked] }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!j.ok) {
+        toast.error("재발송 실패", { id, description: String(j.error ?? res.status) });
+        return;
+      }
+      const list = j.results as ResendResult[];
+      const sent = list.filter((r) => r.status === "sent");
+      setResults(list);
+      if (sent.length) toast.success(`${sent.length}명에게 메일을 보냈어요`, { id });
+      else toast.warning("보낸 메일이 없어요", { id, description: "아래 결과에서 이유를 확인하세요." });
+      onDone();
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <SectionCard
+      title="강제 재발송"
+      description="고른 사용자에게 최근 7일 동안 알림 조건에 걸린 공지를, 이미 보낸 것까지 다시 메일로 보내요"
+      action={
+        <Button size="sm" onClick={() => setConfirm(true)} disabled={disabled || sending || picked.size === 0}>
+          {sending ? <Spinner /> : <RotateCw />} 다시 보내기{picked.size ? ` (${picked.size}명)` : ""}
+        </Button>
+      }
+    >
+      <div className="space-y-3">
+        {disabled && <p className="text-sm text-destructive">메일 발송 계정을 먼저 연결해야 보낼 수 있어요.</p>}
+        <div className="rounded-lg border">
+          <label className="flex cursor-pointer items-center gap-3 border-b bg-muted/40 px-3 py-2 text-sm font-medium">
+            <Checkbox checked={allOn} onCheckedChange={(v) => setPicked(v === true ? new Set(users.map((u) => u.user_id)) : new Set())} />
+            전체 선택 <span className="text-muted-foreground">({users.length}명)</span>
+          </label>
+          <ul className="divide-y">
+            {users.map((u) => {
+              const r = results?.find((x) => x.user_id === u.user_id);
+              return (
+                <li key={u.user_id}>
+                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
+                    <Checkbox checked={picked.has(u.user_id)} onCheckedChange={(v) => toggle(u.user_id, v === true)} />
+                    <span className="flex-1 truncate">{u.email}</span>
+                    {r &&
+                      (r.status === "sent" ? (
+                        <Badge variant="outline" className={STATUS.approved.className}><Send data-icon="inline-start" />{r.count}건 보냄</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">{r.reason ?? "보내지 않음"}</Badge>
+                      ))}
+                  </label>
+                </li>
+              );
+            })}
+            {!users.length && <li className="px-3 py-4 text-sm text-muted-foreground">승인된 사용자가 없어요.</li>}
+          </ul>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          각 사용자의 알림 조건(키워드·구독 기관·받을 유형)과 수신 주소를 그대로 써요. 사용자가 ‘알림 받기’를 꺼 두었어도 보내요.
+        </p>
+      </div>
+
+      <Dialog open={confirm} onOpenChange={setConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{picked.size}명에게 다시 보낼까요?</DialogTitle>
+            <DialogDescription>
+              최근 7일 동안 각자의 알림 조건에 걸린 공지를, 이미 받은 공지까지 포함해 메일 1통으로 다시 보내요. 보낸 메일은 되돌릴 수 없어요.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+            {users.filter((u) => picked.has(u.user_id)).map((u) => (
+              <li key={u.user_id} className="truncate text-muted-foreground">· {u.email}</li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">취소</Button></DialogClose>
+            <Button onClick={send}><Send /> 보내기</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SectionCard>
   );
 }
