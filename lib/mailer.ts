@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { classify } from "./classify";
+import { adminClient } from "./supabase";
 
 export type NoticeRow = {
   notice_id: string;
@@ -57,14 +58,35 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
   };
 }
 
-let transporter: Transporter | null = null;
+// 관리자가 Google 로그인으로 연결한 Gmail 계정(gd_mail_sender)으로 OAuth2 발송
+let cached: { key: string; transporter: Transporter; email: string } | null = null;
+async function getTransport() {
+  const { data, error } = await adminClient().from("gd_mail_sender").select("email, refresh_token").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("연결된 Gmail 발송 계정이 없습니다. 관리자 탭에서 'Gmail 발송 계정 연결'을 눌러주세요.");
+  if (cached?.key !== data.refresh_token) {
+    cached = {
+      key: data.refresh_token,
+      email: data.email,
+      transporter: nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          type: "OAuth2",
+          user: data.email,
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          refreshToken: data.refresh_token,
+        },
+      }),
+    };
+  }
+  return cached!;
+}
+
 export async function sendMail(to: string[], mail: { subject: string; text: string; html: string }) {
-  transporter ??= nodemailer.createTransport({
-    service: "gmail",
-    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
-  });
+  const { transporter, email } = await getTransport();
   await transporter.sendMail({
-    from: `"공공데이터 공지 알림" <${process.env.GMAIL_USER}>`,
+    from: `"공공데이터 공지 알림" <${email}>`,
     to: to.join(", "),
     ...mail,
   });

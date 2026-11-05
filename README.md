@@ -4,7 +4,7 @@
 사용자별 키워드(OR)에 걸리는 공지를 사용자별 수신 메일로 보내는 서비스.
 
 - 주소: https://gonggongdata.anminam.com
-- 스택: Next.js (Vercel, 서울 리전 icn1) · Supabase (DB + Google 로그인) · Gmail SMTP
+- 스택: Next.js (Vercel, 서울 리전 icn1) · Supabase (DB + Google 로그인) · Gmail (관리자 Google 로그인 OAuth 발송)
 
 ## 동작
 1. Vercel Cron `0 5 * * *`(UTC) → `/api/cron/crawl`
@@ -22,7 +22,7 @@
 
 ## 환경변수 (Vercel)
 `.env.example` 참고: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `CRON_SECRET`
+`SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CRON_SECRET`
 
 ## 로컬 개발
 ```bash

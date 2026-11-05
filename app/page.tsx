@@ -19,7 +19,18 @@ export default function Home() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      // 관리자가 'Gmail 발송 계정 연결'로 돌아온 직후: 갱신 토큰을 서버에 저장
+      if (event === "SIGNED_IN" && s?.provider_refresh_token && localStorage.getItem("gd_gmail_connect")) {
+        localStorage.removeItem("gd_gmail_connect");
+        fetch("/api/admin/gmail", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${s.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: s.provider_refresh_token }),
+        }).then((r) => alert(r.ok ? "Gmail 발송 계정이 연결됐어요." : `Gmail 연결 실패 (${r.status})`));
+      }
+    });
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
@@ -253,6 +264,44 @@ function History({ supabase, uid }: { supabase: SB; uid: string }) {
   );
 }
 
+function GmailSender({ supabase, session }: { supabase: SB; session: Session }) {
+  const [sender, setSender] = useState<{ email: string; updated_at: string } | null | undefined>(undefined);
+  useEffect(() => {
+    fetch("/api/admin/gmail", { headers: { Authorization: `Bearer ${session.access_token}` } })
+      .then((r) => r.json())
+      .then((j) => setSender(j.sender ?? null))
+      .catch(() => setSender(null));
+  }, [session]);
+
+  const connect = () => {
+    localStorage.setItem("gd_gmail_connect", "1");
+    supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin,
+        scopes: "https://www.googleapis.com/auth/gmail.send",
+        queryParams: { access_type: "offline", prompt: "consent" },
+      },
+    });
+  };
+
+  return (
+    <section className="card">
+      <h2>메일 발송 계정</h2>
+      <p className="muted small">
+        {sender === undefined
+          ? "확인 중…"
+          : sender
+            ? `${sender.email} 계정으로 발송 중 (연결: ${fmt(sender.updated_at)})`
+            : "연결된 Gmail 계정이 없어서 메일을 보낼 수 없어요."}
+      </p>
+      <div className="row">
+        <button className="primary" onClick={connect}>{sender ? "다시 연결" : "Gmail 발송 계정 연결"}</button>
+      </div>
+    </section>
+  );
+}
+
 function Admin({ supabase, session }: { supabase: SB; session: Session }) {
   const [users, setUsers] = useState<Profile[]>([]);
   const [logs, setLogs] = useState<RunLog[]>([]);
@@ -289,6 +338,7 @@ function Admin({ supabase, session }: { supabase: SB; session: Session }) {
   const pending = users.filter((u) => u.status === "pending");
   return (
     <>
+      <GmailSender supabase={supabase} session={session} />
       <section className="card">
         <h2>승인 대기 ({pending.length})</h2>
         {!pending.length && <p className="muted">대기 중인 요청이 없어요.</p>}
