@@ -1,4 +1,4 @@
-import nodemailer, { type Transporter } from "nodemailer";
+import nodemailer from "nodemailer";
 import { classify } from "./classify";
 import { adminClient } from "./supabase";
 
@@ -58,36 +58,58 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
   };
 }
 
-// 관리자가 Google 로그인으로 연결한 Gmail 계정(gd_mail_sender)으로 OAuth2 발송
-let cached: { key: string; transporter: Transporter; email: string } | null = null;
-async function getTransport() {
+// 관리자가 Google 로그인으로 연결한 Gmail 계정(gd_mail_sender)으로 발송.
+// SMTP 대신 Gmail API(HTTPS)를 써서 서버리스에서 연결이 멈추지 않게 하고, 모든 호출에 타임아웃을 둔다.
+const TIMEOUT_MS = 15_000;
+// 메시지(MIME)만 만들고 실제 전송은 하지 않는 트랜스포트
+const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "unix" });
+
+async function getSender() {
   const { data, error } = await adminClient().from("gd_mail_sender").select("email, refresh_token").eq("id", 1).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("연결된 Gmail 발송 계정이 없습니다. 관리자 탭에서 'Gmail 발송 계정 연결'을 눌러주세요.");
-  if (cached?.key !== data.refresh_token) {
-    cached = {
-      key: data.refresh_token,
-      email: data.email,
-      transporter: nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          type: "OAuth2",
-          user: data.email,
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          refreshToken: data.refresh_token,
-        },
-      }),
-    };
+  return data as { email: string; refresh_token: string };
+}
+
+async function getAccessToken(refreshToken: string) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET 환경변수가 없습니다.");
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const j = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; error_description?: string };
+  if (!res.ok || !j.access_token) {
+    throw new Error(`Google 토큰 갱신 실패 (${res.status}): ${j.error ?? ""} ${j.error_description ?? ""}`.trim());
   }
-  return cached!;
+  return j.access_token;
 }
 
 export async function sendMail(to: string[], mail: { subject: string; text: string; html: string }) {
-  const { transporter, email } = await getTransport();
-  await transporter.sendMail({
-    from: `"공공데이터 공지 알림" <${email}>`,
+  const sender = await getSender();
+  const accessToken = await getAccessToken(sender.refresh_token);
+  const { message } = await composer.sendMail({
+    from: `"공공데이터 공지 알림" <${sender.email}>`,
     to: to.join(", "),
     ...mail,
   });
+  const raw = Buffer.from(message as Buffer).toString("base64url");
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const j = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(`Gmail 발송 실패 (${res.status}): ${j.error?.message ?? res.statusText}`);
+  }
 }

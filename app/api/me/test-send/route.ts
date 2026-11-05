@@ -3,6 +3,7 @@ import { matchKeywords, recentNotices } from "@/lib/run";
 import { renderEmail, sendMail } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // 내 키워드로 최근 7일 공지를 내 수신자에게 테스트 발송 (발송 기록은 남기지 않음)
 export async function POST(req: Request) {
