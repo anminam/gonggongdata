@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AtSign, Building2, Eye, Mail, Plus, Search, Send, Tag, X } from "lucide-react";
+import { AtSign, Building2, Eye, Mail, Plus, Search, Send, Sparkles, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { matchKeywords, NOTICE_TYPES, typeAllowed } from "@/lib/match";
+import { suggestKeywords } from "@/lib/suggest";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -72,13 +73,16 @@ export default function Alerts({
   const previewAll = useMemo(() => (draft ? notices.filter((n) => matchKeywords(n, [draft], body).length > 0) : []), [draft, notices, body]);
   const preview = useMemo(() => previewAll.filter((n) => typeAllowed(n, types)), [previewAll, types]);
 
-  const addKeyword = async () => {
-    if (!draft) return;
-    const { error } = await supabase.from("gd_keywords").insert({ user_id: uid, keyword: draft });
+  const [showAllSuggest, setShowAllSuggest] = useState(false);
+  const suggestions = useMemo(() => suggestKeywords(notices, keywords.map((k) => k.value), 20), [notices, keywords]);
+
+  const addKeyword = async (value: string = draft) => {
+    if (!value) return;
+    const { error } = await supabase.from("gd_keywords").insert({ user_id: uid, keyword: value });
     if (error) return setKwErr(error.code === "23505" ? "이미 있는 키워드예요" : error.message);
     setKwErr(null);
-    setKwInput("");
-    toast.success(`‘${draft}’ 키워드를 추가했어요`);
+    if (value === draft) setKwInput("");
+    toast.success(`‘${value}’ 키워드를 추가했어요`);
     reload();
   };
   const removeKeyword = async (k: ListItem) => {
@@ -136,7 +140,7 @@ export default function Alerts({
                   aria-invalid={!!kwErr}
                 />
                 <InputGroupAddon align="inline-end">
-                  <InputGroupButton variant="default" size="xs" onClick={addKeyword} disabled={!draft}>
+                  <InputGroupButton variant="default" size="xs" onClick={() => addKeyword()} disabled={!draft}>
                     <Plus /> 추가
                   </InputGroupButton>
                 </InputGroupAddon>
@@ -183,6 +187,26 @@ export default function Alerts({
               ))}
               {!keywords.length && <p className="text-sm text-muted-foreground">아직 키워드가 없어요. 키워드와 구독 기관이 모두 없으면 메일이 가지 않아요.</p>}
             </div>
+
+            {suggestions.length > 0 && (
+              <div className="grid gap-2">
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Sparkles className="size-4" /> 추천 키워드 · 저장된 공지에 자주 나오는 말이에요. 누르면 바로 추가돼요.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(showAllSuggest ? suggestions : suggestions.slice(0, 10)).map((s) => (
+                    <Button key={s} variant="secondary" size="sm" className="h-8 rounded-full" onClick={() => addKeyword(s)} aria-label={`${s} 키워드 추가`}>
+                      <Plus /> {s}
+                    </Button>
+                  ))}
+                  {suggestions.length > 10 && (
+                    <Button variant="ghost" size="sm" className="h-8 rounded-full text-muted-foreground" onClick={() => setShowAllSuggest((v) => !v)}>
+                      {showAllSuggest ? "접기" : `더보기 (+${suggestions.length - 10})`}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </FieldGroup>
         </SectionCard>
 
