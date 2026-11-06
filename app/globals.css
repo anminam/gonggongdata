@@ -130,6 +130,10 @@
   html {
     @apply font-sans;
     }
+  /* 안드로이드 크롬의 당겨서 늘어나는(오버스크롤) 효과로 화면 전체가 밀려 올라가는 것 방지 */
+  html, body {
+    overscroll-behavior: none;
+    }
   /* 제목은 본문과 같은 글꼴을 굵고 촘촘하게 */
   .font-heading {
     @apply font-bold tracking-tight;

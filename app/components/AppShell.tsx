@@ -99,7 +99,7 @@ export default function AppShell({
     // 문서 전체가 아니라 본문(SidebarInset)만 스크롤: 태블릿 크롬에서 주소창이 줄며 높이가 바뀌어 메뉴가 같이 밀리는 문제 방지
     <SidebarProvider className="h-dvh overflow-hidden">
       <AppSidebar supabase={supabase} session={session} page={page} go={go} profile={profile} onLogout={onLogout} avatarId={avatarId} setAvatarId={setAvatarId} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
-      <SidebarInset className="min-h-0 overflow-y-auto">
+      <SidebarInset className="min-h-0 overflow-y-auto overscroll-contain">
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
