@@ -66,7 +66,7 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
       .update({ status, approved_at: status === "approved" ? new Date().toISOString() : null })
       .eq("user_id", u.user_id);
     if (error) toast.error(`변경 실패: ${error.message}`);
-    else toast.success(`${u.email} → ${STATUS[status].label}`);
+    else toast.success(`${u.email || "이메일 인증 전"} → ${STATUS[status].label}`);
     load();
   };
 
@@ -151,9 +151,9 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
                 <div key={u.user_id}>
                   {i > 0 && <ItemSeparator />}
                   <Item size="sm">
-                    <ItemMedia><Avatar className="size-8"><AvatarFallback>{u.email[0].toUpperCase()}</AvatarFallback></Avatar></ItemMedia>
+                    <ItemMedia><Avatar className="size-8"><AvatarFallback>{(u.email[0] ?? "?").toUpperCase()}</AvatarFallback></Avatar></ItemMedia>
                     <ItemContent>
-                      <ItemTitle>{u.email}</ItemTitle>
+                      <ItemTitle>{u.email || "이메일 인증 전"}</ItemTitle>
                       <ItemDescription className="flex items-center gap-1"><Clock className="size-3" /> {fmtDateTime(u.created_at)}</ItemDescription>
                     </ItemContent>
                     <ItemActions>
@@ -190,8 +190,8 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
                 <TableRow key={u.user_id}>
                   <TableCell className="pl-4">
                     <div className="flex items-center gap-3">
-                      <Avatar className="size-8"><AvatarFallback>{u.email[0].toUpperCase()}</AvatarFallback></Avatar>
-                      <span className="font-medium">{u.email}</span>
+                      <Avatar className="size-8"><AvatarFallback>{(u.email[0] ?? "?").toUpperCase()}</AvatarFallback></Avatar>
+                      <span className="font-medium">{u.email || "이메일 인증 전"}</span>
                       {u.is_admin && <Badge variant="secondary">관리자</Badge>}
                     </div>
                   </TableCell>

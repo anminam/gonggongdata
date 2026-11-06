@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { Profile } from "./components/shared";
 import AppShell, { ThemeToggle } from "./components/AppShell";
+import EmailVerify from "./components/EmailVerify";
 
 export default function Home() {
   const supabase = useMemo(() => browserClient(), []);
@@ -76,7 +77,7 @@ export default function Home() {
     loadProfile();
   }, [loadProfile]);
 
-  const login = () => supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+  const login = (provider: "google" | "kakao") => supabase.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
   const logout = () => supabase.auth.signOut();
 
   if (profileState === "error")
@@ -137,11 +138,17 @@ export default function Home() {
           <div className="w-full max-w-sm space-y-7">
             <div className="space-y-2">
               <h2 className="text-2xl font-bold tracking-tight">시작하기</h2>
-              <p className="text-sm text-muted-foreground">Google 계정으로 로그인하세요.</p>
+              <p className="text-sm text-muted-foreground">Google 또는 카카오 계정으로 로그인하세요.</p>
             </div>
-            <Button size="lg" className="h-13 w-full text-base" onClick={login}>
-              <GoogleIcon /> Google로 로그인
-            </Button>
+            <div className="space-y-3">
+              <Button size="lg" className="h-13 w-full text-base" onClick={() => login("google")}>
+                <GoogleIcon /> Google로 로그인
+              </Button>
+              {/* 카카오 디자인 가이드 색 (노란 배경 + 검은 글자) */}
+              <Button size="lg" className="h-13 w-full bg-[#FEE500] text-base text-black/85 hover:bg-[#FEE500]/90" onClick={() => login("kakao")}>
+                <KakaoIcon /> 카카오로 로그인
+              </Button>
+            </div>
             <div className="flex gap-3 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
               <Info className="mt-0.5 size-4 shrink-0" />
               처음 로그인하면 관리자 승인 후 이용할 수 있어요.
@@ -151,8 +158,17 @@ export default function Home() {
       </main>
     );
 
+  const rejected = profile?.status === "rejected";
+
+  // 이메일 없이 가입한 사용자(카카오)는 알림 받을 이메일부터 인증한다
+  if (profile && !profile.email && !rejected)
+    return (
+      <Gate>
+        <EmailVerify session={session} onDone={loadProfile} onLogout={logout} />
+      </Gate>
+    );
+
   if (!profile || profile.status !== "approved") {
-    const rejected = profile?.status === "rejected";
     return (
       <Gate>
         <Card className="w-full max-w-md">
@@ -162,7 +178,7 @@ export default function Home() {
             </div>
             <CardTitle className="text-xl">{rejected ? "승인이 거절되었어요" : "관리자 승인 대기 중"}</CardTitle>
             <CardDescription>
-              <span className="font-medium text-foreground">{session.user.email}</span> 계정으로 가입 요청이 접수됐어요.
+              <span className="font-medium text-foreground">{profile?.email || session.user.email || "카카오"}</span> 계정으로 가입 요청이 접수됐어요.
               {rejected ? " 관리자에게 문의해 주세요." : " 관리자가 승인하면 바로 이용할 수 있어요."}
             </CardDescription>
           </CardHeader>
@@ -195,6 +211,14 @@ function Feature({ n, title, desc }: { n: string; title: string; desc: string })
       <div className="font-semibold">{title}</div>
       <div className="text-sm leading-relaxed text-muted-foreground">{desc}</div>
     </li>
+  );
+}
+
+function KakaoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" aria-hidden>
+      <path fill="currentColor" d="M12 3C6.48 3 2 6.53 2 10.88c0 2.82 1.88 5.29 4.7 6.68-.2.74-.75 2.7-.86 3.12-.13.52.19.51.4.37.17-.11 2.66-1.8 3.74-2.53.66.1 1.33.15 2.02.15 5.52 0 10-3.53 10-7.79S17.52 3 12 3z" />
+    </svg>
   );
 }
 
