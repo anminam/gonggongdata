@@ -6,6 +6,7 @@ import { Monitor, Moon, Sun, UserRoundPen } from "lucide-react";
 import { findAvatar } from "@/lib/avatars";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import AvatarPicker from "./AvatarPicker";
 import { EnabledCard, RecipientsCard } from "./Alerts";
@@ -48,9 +49,20 @@ export default function Settings({ ctx, avatarId, onAvatarSaved }: { ctx: Ctx; a
 
         <EnabledCard ctx={ctx} />
         <RecipientsCard ctx={ctx} />
-
-        {profile.is_admin && <SenderCard ctx={ctx} selfLoad />}
       </div>
+
+      {profile.is_admin && (
+        <section className="mt-8 space-y-4">
+          <Separator />
+          <div>
+            <h2 className="text-lg font-semibold">관리자 설정</h2>
+            <p className="text-sm text-muted-foreground">관리자 계정에만 보이는 설정이에요.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SenderCard ctx={ctx} selfLoad />
+          </div>
+        </section>
+      )}
     </>
   );
 }
