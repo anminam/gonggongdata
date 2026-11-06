@@ -91,8 +91,8 @@ export default function Alerts({
     reload();
   };
 
-  const addRecipient = async () => {
-    const v = rcInput.trim();
+  const addRecipient = async (value: string = rcInput) => {
+    const v = value.trim();
     if (!v) return;
     if (!EMAIL_RE.test(v)) return setRcErr("메일주소 형식이 아니에요");
     const { error } = await supabase.from("gd_recipients").insert({ user_id: uid, email: v });
@@ -226,13 +226,25 @@ export default function Alerts({
                     aria-invalid={!!rcErr}
                   />
                   <InputGroupAddon align="inline-end">
-                    <InputGroupButton variant="default" size="xs" onClick={addRecipient} disabled={!rcInput.trim()}>
+                    <InputGroupButton variant="default" size="xs" onClick={() => addRecipient()} disabled={!rcInput.trim()}>
                       <Plus /> 추가
                     </InputGroupButton>
                   </InputGroupAddon>
                 </InputGroup>
                 {rcErr && <FieldError>{rcErr}</FieldError>}
               </Field>
+              {!recipients.length ? (
+                <Alert variant="destructive">
+                  <Mail />
+                  <AlertTitle>수신 주소가 없어서 메일이 안 가요</AlertTitle>
+                  <AlertDescription>
+                    <p>받을 메일주소를 하나 이상 넣어 주세요.</p>
+                    <Button size="sm" variant="outline" className="mt-2" onClick={() => addRecipient(ctx.profile.email)}>
+                      <Plus /> 로그인 메일({ctx.profile.email})로 받기
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : (
               <ItemGroup className="rounded-lg border">
                 {recipients.map((r, i) => (
                   <div key={r.id}>
@@ -246,8 +258,8 @@ export default function Alerts({
                     </Item>
                   </div>
                 ))}
-                {!recipients.length && <p className="p-3 text-sm text-muted-foreground">아직 수신 주소가 없어요.</p>}
               </ItemGroup>
+              )}
             </FieldGroup>
           </SectionCard>
 
