@@ -110,10 +110,10 @@ export default function Home() {
       <Gate>
         <Card className="w-full max-w-md">
           <CardHeader className="items-center text-center">
-            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Bell className="size-6" />
+            <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
+              <Bell className="size-7" />
             </div>
-            <CardTitle className="text-xl">공공데이터 API 공지 알림</CardTitle>
+            <CardTitle className="text-2xl">공공데이터 API 공지 알림</CardTitle>
             <CardDescription>공공데이터포털 API 공지사항을 매일 확인하고, 내 키워드에 걸린 공지만 메일로 보내드려요.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -161,7 +161,7 @@ export default function Home() {
 
 function Gate({ children }: { children: React.ReactNode }) {
   return (
-    <main className="relative flex min-h-svh items-center justify-center bg-muted/40 p-4">
+    <main className="relative flex min-h-svh items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
       <div className="absolute top-4 right-4"><ThemeToggle /></div>
       {children}
     </main>
@@ -171,7 +171,7 @@ function Gate({ children }: { children: React.ReactNode }) {
 function Feature({ icon: Icon, title, desc }: { icon: typeof Bell; title: string; desc: string }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background ring-1 ring-border">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
         <Icon className="size-4" />
       </div>
       <div className="text-sm">

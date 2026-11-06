@@ -13,8 +13,8 @@ import { Ctx, daysAgo, fmtShort, Kw, Notice, NOTICE_TYPES, PageHeader, SectionCa
 import type { NoticeFilter, Page } from "./AppShell";
 
 const RANGE = 30;
-const dailyConfig = { count: { label: "공지", color: "var(--primary)" } } satisfies ChartConfig;
-const typeConfig = { count: { label: "공지", color: "var(--primary)" } } satisfies ChartConfig;
+const dailyConfig = { count: { label: "공지", color: "var(--chart-1)" } } satisfies ChartConfig;
+const typeConfig = { count: { label: "공지", color: "var(--chart-2)" } } satisfies ChartConfig;
 
 export default function Overview({
   ctx, notices, rule, go,

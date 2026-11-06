@@ -144,7 +144,7 @@ function AppSidebar({
                 <Bell className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">공공데이터 알림</span>
+                <span className="truncate font-heading text-base">공공데이터 알림</span>
                 <span className="truncate text-xs text-muted-foreground">API 공지 모니터링</span>
               </div>
             </SidebarMenuButton>

@@ -88,7 +88,7 @@ export function PageHeader({ title, description, action }: { title: string; desc
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="font-heading text-3xl">{title}</h1>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
       {action}
@@ -102,13 +102,13 @@ export function StatCard({ label, value, hint, icon: Icon }: { label: string; va
       <CardHeader>
         <CardDescription className="font-medium">{label}</CardDescription>
         <CardAction>
-          <div className="flex size-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Icon className="size-4" />
           </div>
         </CardAction>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
+        <div className="font-heading text-3xl tabular-nums">{value}</div>
         {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
       </CardContent>
     </Card>
