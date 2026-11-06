@@ -280,13 +280,13 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
       return next;
     });
 
-  const send = async () => {
+  const send = async (test = false) => {
     setConfirm(false);
     setSending(true);
     setResults(null);
-    const id = toast.loading(`${picked.size}명에게 다시 보내는 중…`);
+    const id = toast.loading(`${picked.size}명에게 ${test ? "테스트 메일 " : "다시 "}보내는 중…`);
     try {
-      const res = await fetch("/api/admin/resend", {
+      const res = await fetch(test ? "/api/admin/test-send" : "/api/admin/resend", {
         method: "POST",
         headers: { Authorization: `Bearer ${ctx.session.access_token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ user_ids: [...picked] }),
@@ -312,9 +312,14 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
       title="강제 재발송"
       description="고른 사용자에게 최근 7일 동안 알림 조건에 걸린 공지를, 이미 보낸 것까지 다시 메일로 보내요"
       action={
-        <Button size="sm" onClick={() => setConfirm(true)} disabled={disabled || sending || picked.size === 0}>
-          {sending ? <Spinner /> : <RotateCw />} 다시 보내기{picked.size ? ` (${picked.size}명)` : ""}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => send(true)} disabled={disabled || sending || picked.size === 0}>
+            <Send /> 테스트 발송
+          </Button>
+          <Button size="sm" onClick={() => setConfirm(true)} disabled={disabled || sending || picked.size === 0}>
+            {sending ? <Spinner /> : <RotateCw />} 다시 보내기{picked.size ? ` (${picked.size}명)` : ""}
+          </Button>
+        </div>
       }
     >
       <div className="space-y-3">
@@ -347,6 +352,7 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
         </div>
         <p className="text-xs text-muted-foreground">
           각 사용자의 알림 조건(키워드·구독 기관·받을 유형)과 수신 주소를 그대로 써요. 사용자가 ‘알림 받기’를 꺼 두었어도 보내요.
+          ‘테스트 발송’은 제목에 [테스트]가 붙고 발송 기록이 남지 않으며, 걸린 공지가 없으면 최신 1건을 샘플로 보내요.
         </p>
       </div>
 
@@ -365,7 +371,7 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
           </ul>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">취소</Button></DialogClose>
-            <Button onClick={send}><Send /> 보내기</Button>
+            <Button onClick={() => send()}><Send /> 보내기</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

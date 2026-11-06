@@ -187,6 +187,35 @@ export async function deliverToUser(db: Db, u: AlertUser, notices: NoticeRow[], 
   return { ...base, status: "sent", count: hits.length };
 }
 
+/** 관리자 테스트 발송: 사용자 조건대로 걸린 최근 7일 공지를 '[테스트]' 제목으로 보낸다. 발송 기록은 남기지 않는다 */
+export async function testSendToUsers(userIds: string[]) {
+  const db = adminClient();
+  const notices = await recentNotices(db);
+  const users = await loadAlertUsers(db, userIds);
+  const results: DeliverResult[] = [];
+  for (const u of users) {
+    const base = { user_id: u.user_id, email: u.email };
+    try {
+      if (!u.recipients.length) {
+        results.push({ ...base, status: "skipped", count: 0, reason: "수신 주소 없음" });
+        continue;
+      }
+      let hits = pickHits(notices, u.rule, null);
+      // 매칭이 없으면 형식 확인용으로 최신 1건 샘플
+      if (!hits.length && notices[0]) hits = [{ ...notices[0], matched: ["(샘플)"] }];
+      if (!hits.length) {
+        results.push({ ...base, status: "skipped", count: 0, reason: "저장된 공지 없음" });
+        continue;
+      }
+      await sendMail(u.recipients, renderEmail(hits.slice(0, 10), true));
+      results.push({ ...base, status: "sent", count: Math.min(hits.length, 10) });
+    } catch (e) {
+      results.push({ ...base, status: "skipped", count: 0, reason: `실패: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  }
+  return results;
+}
+
 /** 관리자 강제 재발송: 선택한 사용자에게 최근 7일 걸린 공지를 (이미 보낸 것 포함) 다시 보낸다 */
 export async function resendRecent(userIds: string[]) {
   const db = adminClient();
