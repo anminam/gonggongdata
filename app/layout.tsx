@@ -12,6 +12,15 @@ const noto = Noto_Sans_KR({ subsets: ["latin"], weight: ["400", "500", "600", "7
 export const metadata: Metadata = {
   title: "공공데이터 API 공지 알림",
   description: "공공데이터포털 API 공지사항 키워드 알림",
+  // 카카오톡 등 공유 미리보기 (이미지는 app/opengraph-image.tsx, 주소는 Vercel 운영 도메인이 자동으로 붙음)
+  openGraph: {
+    type: "website",
+    locale: "ko_KR",
+    siteName: "공공데이터 API 공지 알림",
+    title: "공공데이터 API 공지 알림",
+    description: "관심 키워드가 담긴 공공데이터포털 API 공지를 메일로 바로 받아보세요",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
