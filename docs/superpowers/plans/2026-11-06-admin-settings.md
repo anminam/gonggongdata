@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 15 (App Router), Supabase(Postgres, RLS), vitest, shadcn/ui, sonner(toast)
 
-**Spec:** `docs/superpowers/specs/2026-11-06-admin-settings-design.md`
+**Spec:** `docs/superpowers/specs/2026-11-06-gonggongdata-service-design.md` (11장. 원래 문서 admin-settings-design.md는 이 문서에 합쳐짐)
 
 ## 확인된 현재 상태 (2026-11-06, Supabase `anminam-edu` 프로젝트 `jucqpfazhlrnrohkfiyg` 직접 조회)
 
