@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, CalendarClock, Clock, LogOut, Mail, RefreshCw, Search, ShieldX } from "lucide-react";
+import { Bell, Clock, Info, LogOut, RefreshCw, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 import { browserClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { Profile } from "./components/shared";
@@ -107,28 +107,48 @@ export default function Home() {
 
   if (!session)
     return (
-      <Gate>
-        <Card className="w-full max-w-md">
-          <CardHeader className="items-center text-center">
-            <div className="mx-auto mb-2 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
-              <Bell className="size-7" />
+      <main className="relative flex min-h-svh flex-wrap bg-background">
+        <div className="absolute top-4 right-4"><ThemeToggle /></div>
+        <section className="flex min-w-0 flex-[1_1_560px] flex-col gap-12 border-r bg-card px-6 py-10 md:px-16">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Bell className="size-4" />
             </div>
-            <CardTitle className="text-2xl">공공데이터 API 공지 알림</CardTitle>
-            <CardDescription>공공데이터포털 API 공지사항을 매일 확인하고, 내 키워드에 걸린 공지만 메일로 보내드려요.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Feature icon={Search} title="키워드로 걸러 받기" desc="기관명·API명·제목에서 키워드를 찾아요" />
-            <Feature icon={CalendarClock} title="매일 오후 2시 자동 발송" desc="새 공지가 있을 때만 메일 1통으로 묶어서" />
-            <Feature icon={Mail} title="유형별로 정리된 메일" desc="중단·URL 변경·점검을 한눈에" />
-          </CardContent>
-          <CardFooter className="flex-col gap-2">
-            <Button size="lg" className="w-full" onClick={login}>
+            <span className="font-bold tracking-tight">공공데이터 알림</span>
+          </div>
+          <div className="mt-auto max-w-xl space-y-5">
+            <p className="text-sm font-semibold tracking-widest text-secondary-foreground">API 공지 모니터링</p>
+            <h1 className="font-heading text-4xl leading-tight md:text-5xl">
+              공공데이터포털 공지,
+              <br />
+              이제 놓치지 마세요.
+            </h1>
+            <p className="text-lg leading-relaxed text-muted-foreground">
+              쓰고 있는 API가 중단되거나 URL이 바뀌면 메일로 먼저 알려드려요. 키워드와 기관만 등록해 두면 됩니다.
+            </p>
+          </div>
+          <ol className="mb-auto grid max-w-3xl grid-cols-1 border-t sm:grid-cols-3">
+            <Feature n="01" title="키워드로 걸러 받기" desc="기관명·API명·제목에서 키워드를 찾아요" />
+            <Feature n="02" title="매일 오후 2시 발송" desc="새 공지가 있을 때만 메일 1통으로 묶어서" />
+            <Feature n="03" title="유형별로 정리" desc="중단·URL 변경·점검을 한눈에" />
+          </ol>
+        </section>
+        <section className="flex min-w-0 flex-[1_1_420px] items-center justify-center px-6 py-10">
+          <div className="w-full max-w-sm space-y-7">
+            <div className="space-y-2">
+              <h2 className="text-2xl font-bold tracking-tight">시작하기</h2>
+              <p className="text-sm text-muted-foreground">Google 계정으로 로그인하세요.</p>
+            </div>
+            <Button size="lg" className="h-13 w-full text-base" onClick={login}>
               <GoogleIcon /> Google로 로그인
             </Button>
-            <p className="text-center text-xs text-muted-foreground">처음 로그인하면 관리자 승인 후 이용할 수 있어요.</p>
-          </CardFooter>
-        </Card>
-      </Gate>
+            <div className="flex gap-3 rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+              <Info className="mt-0.5 size-4 shrink-0" />
+              처음 로그인하면 관리자 승인 후 이용할 수 있어요.
+            </div>
+          </div>
+        </section>
+      </main>
     );
 
   if (!profile || profile.status !== "approved") {
@@ -161,24 +181,20 @@ export default function Home() {
 
 function Gate({ children }: { children: React.ReactNode }) {
   return (
-    <main className="relative flex min-h-svh items-center justify-center bg-gradient-to-br from-accent via-background to-secondary p-4">
+    <main className="relative flex min-h-svh items-center justify-center bg-background p-4">
       <div className="absolute top-4 right-4"><ThemeToggle /></div>
       {children}
     </main>
   );
 }
 
-function Feature({ icon: Icon, title, desc }: { icon: typeof Bell; title: string; desc: string }) {
+function Feature({ n, title, desc }: { n: string; title: string; desc: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Icon className="size-4" />
-      </div>
-      <div className="text-sm">
-        <div className="font-medium">{title}</div>
-        <div className="text-muted-foreground">{desc}</div>
-      </div>
-    </div>
+    <li className="space-y-1.5 py-5 sm:px-5 sm:first:pl-0 sm:last:pr-0 sm:[&+&]:border-l">
+      <div className="text-xs text-muted-foreground tabular-nums">{n}</div>
+      <div className="font-semibold">{title}</div>
+      <div className="text-sm leading-relaxed text-muted-foreground">{desc}</div>
+    </li>
   );
 }
 

@@ -44,13 +44,13 @@ export const daysAgo = (n: number) => new Date(Date.now() - n * 864e5).toLocaleD
 
 export { NOTICE_TYPES } from "@/lib/match";
 
-// 공지 유형별 배지 모양. 색만으로 구분하지 않도록 아이콘·글자를 같이 쓴다.
+// 공지 유형별 배지 모양. 흑백 테마라 채움·테두리 차이와 아이콘·글자로 구분한다.
 const TYPE_STYLE: Record<string, { icon: LucideIcon; className: string }> = {
-  "제공 중단/종료": { icon: CircleOff, className: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20" },
-  "URL 변경": { icon: ArrowRightLeft, className: "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20" },
-  "일시 중단(점검)": { icon: Wrench, className: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20" },
-  "API 변경": { icon: AlertTriangle, className: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20" },
-  "신규/추가": { icon: Sparkles, className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" },
+  "제공 중단/종료": { icon: CircleOff, className: "bg-foreground text-background border-foreground" },
+  "일시 중단(점검)": { icon: Wrench, className: "border-foreground text-foreground" },
+  "URL 변경": { icon: ArrowRightLeft, className: "bg-foreground/10 text-foreground border-transparent" },
+  "API 변경": { icon: AlertTriangle, className: "bg-muted text-foreground border-transparent" },
+  "신규/추가": { icon: Sparkles, className: "text-foreground/80" },
 };
 
 export function TypeBadge({ type, className }: { type: string | null; className?: string }) {
