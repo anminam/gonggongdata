@@ -11,6 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import AvatarPicker from "./AvatarPicker";
 import { EnabledCard, RecipientsCard } from "./Alerts";
 import { SenderCard } from "./Admin";
+import { AppSettingsCards } from "./AdminSettings";
 import { Ctx, PageHeader, SectionCard } from "./shared";
 
 export default function Settings({ ctx, avatarId, onAvatarSaved }: { ctx: Ctx; avatarId?: string; onAvatarSaved: (id: string) => void }) {
@@ -60,6 +61,7 @@ export default function Settings({ ctx, avatarId, onAvatarSaved }: { ctx: Ctx; a
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <SenderCard ctx={ctx} selfLoad />
+            <AppSettingsCards ctx={ctx} />
           </div>
         </section>
       )}
