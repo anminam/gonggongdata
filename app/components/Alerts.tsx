@@ -29,23 +29,17 @@ export default function Alerts({
 }) {
   const { supabase, session } = ctx;
   const uid = ctx.profile.user_id;
-  const [recipients, setRecipients] = useState<ListItem[]>([]);
+  const [rcCount, setRcCount] = useState(0);
   const [enabled, setEnabled] = useState(true);
   const [body, setBody] = useState(searchBody);
   const [types, setTypes] = useState<string[] | null>(notifyTypes);
   useEffect(() => setTypes(notifyTypes), [notifyTypes]);
   const [kwInput, setKwInput] = useState("");
   const [kwErr, setKwErr] = useState<string | null>(null);
-  const [rcInput, setRcInput] = useState("");
-  const [rcErr, setRcErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   const loadLocal = useCallback(async () => {
-    const [r, s] = await Promise.all([
-      supabase.from("gd_recipients").select("id, email").eq("user_id", uid).order("id"),
-      supabase.from("gd_user_settings").select("enabled, search_body").eq("user_id", uid).maybeSingle(),
-    ]);
-    setRecipients((r.data ?? []).map((x) => ({ id: x.id, value: x.email })));
+    const s = await supabase.from("gd_user_settings").select("enabled, search_body").eq("user_id", uid).maybeSingle();
     if (s.data) {
       setEnabled(s.data.enabled);
       setBody(s.data.search_body);
@@ -89,23 +83,6 @@ export default function Alerts({
     await supabase.from("gd_keywords").delete().eq("id", k.id);
     toast(`‘${k.value}’ 키워드를 지웠어요`);
     reload();
-  };
-
-  const addRecipient = async (value: string = rcInput) => {
-    const v = value.trim();
-    if (!v) return;
-    if (!EMAIL_RE.test(v)) return setRcErr("메일주소 형식이 아니에요");
-    const { error } = await supabase.from("gd_recipients").insert({ user_id: uid, email: v });
-    if (error) return setRcErr(error.code === "23505" ? "이미 있는 주소예요" : error.message);
-    setRcErr(null);
-    setRcInput("");
-    toast.success("수신 주소를 추가했어요");
-    loadLocal();
-  };
-  const removeRecipient = async (r: ListItem) => {
-    await supabase.from("gd_recipients").delete().eq("id", r.id);
-    toast(`${r.value} 주소를 지웠어요`);
-    loadLocal();
   };
 
   const testSend = async () => {
@@ -211,57 +188,7 @@ export default function Alerts({
         </SectionCard>
 
         <div className="grid content-start gap-4 lg:col-span-2">
-          <SectionCard title="수신 메일주소" description="여러 곳에 보낼 수 있어요">
-            <FieldGroup>
-              <Field data-invalid={!!rcErr || undefined}>
-                <InputGroup>
-                  <InputGroupAddon><AtSign /></InputGroupAddon>
-                  <InputGroupInput
-                    type="email"
-                    value={rcInput}
-                    placeholder="name@example.com"
-                    onChange={(e) => { setRcInput(e.target.value); setRcErr(null); }}
-                    onKeyDown={(e) => e.key === "Enter" && addRecipient()}
-                    aria-label="새 수신 메일주소"
-                    aria-invalid={!!rcErr}
-                  />
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton variant="default" size="xs" onClick={() => addRecipient()} disabled={!rcInput.trim()}>
-                      <Plus /> 추가
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
-                {rcErr && <FieldError>{rcErr}</FieldError>}
-              </Field>
-              {!recipients.length ? (
-                <Alert variant="destructive">
-                  <Mail />
-                  <AlertTitle>수신 주소가 없어서 메일이 안 가요</AlertTitle>
-                  <AlertDescription>
-                    <p>받을 메일주소를 하나 이상 넣어 주세요.</p>
-                    <Button size="sm" variant="outline" className="mt-2" onClick={() => addRecipient(ctx.profile.email)}>
-                      <Plus /> 로그인 메일({ctx.profile.email})로 받기
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ) : (
-              <ItemGroup className="rounded-lg border">
-                {recipients.map((r, i) => (
-                  <div key={r.id}>
-                    {i > 0 && <ItemSeparator />}
-                    <Item size="sm">
-                      <Mail className="size-4 text-muted-foreground" />
-                      <ItemContent><ItemTitle className="font-normal">{r.value}</ItemTitle></ItemContent>
-                      <ItemActions>
-                        <Button variant="ghost" size="icon-sm" onClick={() => removeRecipient(r)} aria-label={`${r.value} 삭제`}><X /></Button>
-                      </ItemActions>
-                    </Item>
-                  </div>
-                ))}
-              </ItemGroup>
-              )}
-            </FieldGroup>
-          </SectionCard>
+          <RecipientsCard ctx={ctx} onCount={setRcCount} />
 
           <SectionCard title="옵션">
             <FieldGroup>
@@ -282,7 +209,7 @@ export default function Alerts({
               </Field>
               <FieldSeparator />
               <Field>
-                <Button variant="outline" onClick={testSend} disabled={sending || !recipients.length}>
+                <Button variant="outline" onClick={testSend} disabled={sending || !rcCount}>
                   {sending ? <Spinner /> : <Send />} 테스트 메일 보내기
                 </Button>
                 <FieldDescription>최근 7일 공지 중 내 알림 조건에 걸린 공지로 보내요. 없으면 최신 1건을 샘플로 보내요.</FieldDescription>
@@ -517,6 +444,127 @@ function TypesCard({
           )
         )}
       </div>
+    </SectionCard>
+  );
+}
+
+/** 수신 메일주소 카드 (알림 설정·설정 페이지 공용). 주소를 직접 읽고 고친다 */
+export function RecipientsCard({ ctx, onCount }: { ctx: Ctx; onCount?: (n: number) => void }) {
+  const { supabase } = ctx;
+  const uid = ctx.profile.user_id;
+  const [recipients, setRecipients] = useState<ListItem[]>([]);
+  const [rcInput, setRcInput] = useState("");
+  const [rcErr, setRcErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const r = await supabase.from("gd_recipients").select("id, email").eq("user_id", uid).order("id");
+    const list = (r.data ?? []).map((x) => ({ id: x.id, value: x.email }));
+    setRecipients(list);
+    onCount?.(list.length);
+  }, [supabase, uid, onCount]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const addRecipient = async (value: string = rcInput) => {
+    const v = value.trim();
+    if (!v) return;
+    if (!EMAIL_RE.test(v)) return setRcErr("메일주소 형식이 아니에요");
+    const { error } = await supabase.from("gd_recipients").insert({ user_id: uid, email: v });
+    if (error) return setRcErr(error.code === "23505" ? "이미 있는 주소예요" : error.message);
+    setRcErr(null);
+    setRcInput("");
+    toast.success("수신 주소를 추가했어요");
+    load();
+  };
+  const removeRecipient = async (r: ListItem) => {
+    await supabase.from("gd_recipients").delete().eq("id", r.id);
+    toast(`${r.value} 주소를 지웠어요`);
+    load();
+  };
+
+  return (
+    <SectionCard title="수신 메일주소" description="여러 곳에 보낼 수 있어요">
+      <FieldGroup>
+        <Field data-invalid={!!rcErr || undefined}>
+          <InputGroup>
+            <InputGroupAddon><AtSign /></InputGroupAddon>
+            <InputGroupInput
+              type="email"
+              value={rcInput}
+              placeholder="name@example.com"
+              onChange={(e) => { setRcInput(e.target.value); setRcErr(null); }}
+              onKeyDown={(e) => e.key === "Enter" && addRecipient()}
+              aria-label="새 수신 메일주소"
+              aria-invalid={!!rcErr}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton variant="default" size="xs" onClick={() => addRecipient()} disabled={!rcInput.trim()}>
+                <Plus /> 추가
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+          {rcErr && <FieldError>{rcErr}</FieldError>}
+        </Field>
+        {!recipients.length ? (
+          <Alert variant="destructive">
+            <Mail />
+            <AlertTitle>수신 주소가 없어서 메일이 안 가요</AlertTitle>
+            <AlertDescription>
+              <p>받을 메일주소를 하나 이상 넣어 주세요.</p>
+              <Button size="sm" variant="outline" className="mt-2" onClick={() => addRecipient(ctx.profile.email)}>
+                <Plus /> 로그인 메일({ctx.profile.email})로 받기
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <ItemGroup className="rounded-lg border">
+            {recipients.map((r, i) => (
+              <div key={r.id}>
+                {i > 0 && <ItemSeparator />}
+                <Item size="sm">
+                  <Mail className="size-4 text-muted-foreground" />
+                  <ItemContent><ItemTitle className="font-normal">{r.value}</ItemTitle></ItemContent>
+                  <ItemActions>
+                    <Button variant="ghost" size="icon-sm" onClick={() => removeRecipient(r)} aria-label={`${r.value} 삭제`}><X /></Button>
+                  </ItemActions>
+                </Item>
+              </div>
+            ))}
+          </ItemGroup>
+        )}
+      </FieldGroup>
+    </SectionCard>
+  );
+}
+
+/** '알림 받기' 켜기/끄기 카드 (설정 페이지용) */
+export function EnabledCard({ ctx }: { ctx: Ctx }) {
+  const { supabase } = ctx;
+  const uid = ctx.profile.user_id;
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    supabase.from("gd_user_settings").select("enabled").eq("user_id", uid).maybeSingle()
+      .then(({ data }) => setEnabled(data ? data.enabled : true));
+  }, [supabase, uid]);
+  const save = async (v: boolean) => {
+    setEnabled(v);
+    const { error } = await supabase.from("gd_user_settings").upsert({ user_id: uid, enabled: v, updated_at: new Date().toISOString() });
+    if (error) {
+      setEnabled(!v);
+      return toast.error(`저장 실패: ${error.message}`);
+    }
+    toast.success("설정을 저장했어요");
+  };
+  return (
+    <SectionCard title="메일 알림">
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="settings-enabled">알림 받기</FieldLabel>
+          <FieldDescription>끄면 매일 발송에서 빠져요. 키워드·기관·유형은 ‘알림 설정’에서 바꿔요.</FieldDescription>
+        </FieldContent>
+        <Switch id="settings-enabled" checked={!!enabled} disabled={enabled === null} onCheckedChange={save} />
+      </Field>
     </SectionCard>
   );
 }

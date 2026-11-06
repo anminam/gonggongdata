@@ -5,7 +5,7 @@ import type { AlertRule } from "@/lib/match";
 import type { Session } from "@supabase/supabase-js";
 import { useTheme } from "next-themes";
 import {
-  Bell, ChevronsUpDown, FileText, History as HistoryIcon, LayoutDashboard, UserRoundPen, LogOut, Monitor, Moon, Shield, Sun,
+  Bell, ChevronsUpDown, FileText, History as HistoryIcon, LayoutDashboard, UserRoundPen, LogOut, Monitor, Moon, Settings as SettingsIcon, Shield, Sun,
 } from "lucide-react";
 import type { browserClient } from "@/lib/supabase";
 import {
@@ -29,8 +29,9 @@ import Notices from "./Notices";
 import Alerts, { type ListItem } from "./Alerts";
 import History from "./History";
 import Admin from "./Admin";
+import Settings from "./Settings";
 
-export type Page = "overview" | "notices" | "alerts" | "history" | "admin";
+export type Page = "overview" | "notices" | "alerts" | "history" | "admin" | "settings";
 export type NoticeFilter = { type?: string; mine?: boolean };
 
 const NAV: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
@@ -52,6 +53,7 @@ export default function AppShell({
   const [searchBody, setSearchBody] = useState(false);
   const [notifyTypes, setNotifyTypes] = useState<string[] | null>(null);
   const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>({});
+  const [avatarId, setAvatarId] = useState<string | undefined>(findAvatar(session.user.user_metadata.gd_avatar)?.id);
 
   const loadNotices = useCallback(async () => {
     const { data } = await supabase
@@ -91,11 +93,11 @@ export default function AppShell({
     setPage(p);
     window.scrollTo(0, 0);
   };
-  const current = [...NAV, { id: "admin" as Page, label: "관리자" }].find((n) => n.id === page)!;
+  const current = [...NAV, { id: "admin" as Page, label: "관리자" }, { id: "settings" as Page, label: "설정" }].find((n) => n.id === page)!;
 
   return (
     <SidebarProvider>
-      <AppSidebar supabase={supabase} session={session} page={page} go={go} profile={profile} onLogout={onLogout} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
+      <AppSidebar supabase={supabase} session={session} page={page} go={go} profile={profile} onLogout={onLogout} avatarId={avatarId} setAvatarId={setAvatarId} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
@@ -114,6 +116,7 @@ export default function AppShell({
             <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} reload={loadMine} />
           )}
           {page === "history" && <History ctx={ctx} />}
+          {page === "settings" && <Settings ctx={ctx} avatarId={avatarId} onAvatarSaved={setAvatarId} />}
           {page === "admin" && profile.is_admin && <Admin ctx={ctx} onCrawled={loadNotices} notices={notices ?? []} />}
         </div>
       </SidebarInset>
@@ -122,9 +125,9 @@ export default function AppShell({
 }
 
 function AppSidebar({
-  page, go, profile, onLogout, noticeCount, keywordCount, supabase, session,
+  page, go, profile, onLogout, noticeCount, keywordCount, supabase, avatarId, setAvatarId,
 }: {
-  supabase: ReturnType<typeof browserClient>; session: Session;
+  supabase: ReturnType<typeof browserClient>; session: Session; avatarId?: string; setAvatarId: (id: string) => void;
   page: Page; go: (p: Page) => void; profile: Profile; onLogout: () => void; noticeCount?: number; keywordCount: number;
 }) {
   const { isMobile, setOpenMobile } = useSidebar();
@@ -185,15 +188,17 @@ function AppSidebar({
         )}
       </SidebarContent>
       <SidebarFooter>
-        <UserMenu supabase={supabase} session={session} profile={profile} onLogout={onLogout} />
+        <UserMenu supabase={supabase} profile={profile} onLogout={onLogout} avatarId={avatarId} setAvatarId={setAvatarId} onSettings={() => nav("settings")} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );
 }
 
-function UserMenu({ profile, onLogout, supabase, session }: { profile: Profile; onLogout: () => void; supabase: ReturnType<typeof browserClient>; session: Session }) {
-  const [avatarId, setAvatarId] = useState<string | undefined>(findAvatar(session.user.user_metadata.gd_avatar)?.id);
+function UserMenu({ profile, onLogout, supabase, avatarId, setAvatarId, onSettings }: {
+  profile: Profile; onLogout: () => void; supabase: ReturnType<typeof browserClient>;
+  avatarId?: string; setAvatarId: (id: string) => void; onSettings: () => void;
+}) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const avatar = findAvatar(avatarId);
   const { isMobile } = useSidebar();
@@ -226,6 +231,7 @@ function UserMenu({ profile, onLogout, supabase, session }: { profile: Profile; 
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onSettings}><SettingsIcon />설정</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setPickerOpen(true)}><UserRoundPen />프로필 이미지 변경</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

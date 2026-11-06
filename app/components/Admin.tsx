@@ -65,17 +65,7 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
     load();
   };
 
-  const connectGmail = () => {
-    localStorage.setItem("gd_gmail_connect", "1");
-    supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-        scopes: "https://www.googleapis.com/auth/gmail.send",
-        queryParams: { access_type: "offline", prompt: "consent" },
-      },
-    });
-  };
+  const connectGmail = () => startGmailConnect(ctx);
 
   const runNow = async () => {
     setRunning(true);
@@ -141,19 +131,7 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard
-          title="메일 발송 계정"
-          description="이 Gmail 계정으로 알림 메일을 보내요"
-          action={<Button variant="outline" size="sm" onClick={connectGmail}>{sender ? "다시 연결" : "연결"}</Button>}
-        >
-          <Item variant="muted">
-            <ItemMedia variant="icon"><Mail /></ItemMedia>
-            <ItemContent>
-              <ItemTitle>{sender === undefined ? "확인 중…" : sender ? sender.email : "연결된 계정 없음"}</ItemTitle>
-              <ItemDescription>{sender ? `연결 ${fmtDateTime(sender.updated_at)}` : "Google 로그인으로 Gmail 보내기 권한을 받아요"}</ItemDescription>
-            </ItemContent>
-          </Item>
-        </SectionCard>
+        <SenderCard ctx={ctx} sender={sender} />
 
         <SectionCard title={`승인 대기 (${pending.length})`} description="새로 가입한 사용자예요">
           {!pending.length ? (
@@ -434,6 +412,47 @@ function ResendCard({ ctx, users, notices, disabled, onDone }: { ctx: Ctx; users
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </SectionCard>
+  );
+}
+
+/** 관리자: Gmail 발송 계정 연결 (Google 로그인으로 gmail.send 권한을 받는다) */
+export function startGmailConnect({ supabase }: Ctx) {
+  localStorage.setItem("gd_gmail_connect", "1");
+  supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin,
+      scopes: "https://www.googleapis.com/auth/gmail.send",
+      queryParams: { access_type: "offline", prompt: "consent" },
+    },
+  });
+}
+
+/** 메일 발송 계정 카드 (관리자 탭·설정 페이지 공용). selfLoad면 연결 상태를 직접 읽어 온다 */
+export function SenderCard({ ctx, sender: given, selfLoad = false }: { ctx: Ctx; sender?: Sender; selfLoad?: boolean }) {
+  const [own, setOwn] = useState<Sender | undefined>(undefined);
+  useEffect(() => {
+    if (!selfLoad) return;
+    fetch("/api/admin/gmail", { headers: { Authorization: `Bearer ${ctx.session.access_token}` } })
+      .then((r) => (r.ok ? r.json() : { sender: null }))
+      .then((j) => setOwn(j.sender ?? null))
+      .catch(() => setOwn(null));
+  }, [selfLoad, ctx.session]);
+  const sender = selfLoad ? own : given;
+  return (
+    <SectionCard
+      title="메일 발송 계정"
+      description="이 Gmail 계정으로 알림 메일을 보내요"
+      action={<Button variant="outline" size="sm" onClick={() => startGmailConnect(ctx)}>{sender ? "다시 연결" : "연결"}</Button>}
+    >
+      <Item variant="muted">
+        <ItemMedia variant="icon"><Mail /></ItemMedia>
+        <ItemContent>
+          <ItemTitle>{sender === undefined ? "확인 중…" : sender ? sender.email : "연결된 계정 없음"}</ItemTitle>
+          <ItemDescription>{sender ? `연결 ${fmtDateTime(sender.updated_at)}` : "Google 로그인으로 Gmail 보내기 권한을 받아요"}</ItemDescription>
+        </ItemContent>
+      </Item>
     </SectionCard>
   );
 }
