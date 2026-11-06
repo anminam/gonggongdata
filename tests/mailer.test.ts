@@ -19,6 +19,11 @@ describe("renderEmail: 알림 메일", () => {
     expect(renderEmail([notice()]).subject).not.toContain("[테스트]");
   });
 
+  it("양식이 있으면 그 제목을 쓴다", () => {
+    expect(renderEmail([notice(), notice({ notice_id: "2" })], false, "알림 {건수}건").subject).toBe("알림 2건");
+    expect(renderEmail([notice()], true, "알림").subject).toBe("[테스트] 알림");
+  });
+
   it("제목에 건수와 날짜가 들어간다", () => {
     expect(renderEmail([notice(), notice({ notice_id: "2" })]).subject).toMatch(/2건 \(\d{4}-\d{2}-\d{2}\)$/);
   });

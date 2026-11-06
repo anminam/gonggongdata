@@ -3,6 +3,7 @@ import { classify } from "./classify";
 import { adminClient } from "./supabase";
 import { ORG_PREFIX } from "./match";
 import { findAvatar } from "./avatars";
+import { fillSubject } from "./settings";
 
 export type NoticeRow = {
   notice_id: string;
@@ -21,9 +22,9 @@ const ICON = "🔔";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test = false) {
+export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test = false, subjectTemplate?: string | null) {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Seoul" });
-  const subject = `${test ? "[테스트] " : ""}🚨 공공데이터 API 변경공지 감지 ${notices.length}건 (${today})`;
+  const subject = `${test ? "[테스트] " : ""}${fillSubject(subjectTemplate, notices.length, today)}`;
 
   const classified = notices.map((n) => ({ n, c: classify(n.title, n.body ?? "") }));
 

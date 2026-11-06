@@ -49,6 +49,11 @@ describe("deliverToUser: 매일 발송", () => {
     expect(upserts[0].rows.map((x) => x.notice_id)).toEqual(["B"]);
   });
 
+  it("제목 양식을 넘기면 그 제목으로 보낸다", async () => {
+    await deliverToUser(fakeDb([]).db, user(), notices, { resend: false, subjectTemplate: "X {건수}" });
+    expect((sendMail.mock.calls[0] as unknown[])[1]).toMatchObject({ subject: "X 2" });
+  });
+
   it("모두 이미 보냈으면 메일을 보내지 않는다", async () => {
     const { db } = fakeDb(["A", "B"]);
     const r = await deliverToUser(db, user(), notices, { resend: false });

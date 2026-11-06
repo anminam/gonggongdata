@@ -78,7 +78,11 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
     try {
       const res = await fetch("/api/admin/run", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` } });
       const j = await res.json().catch(() => ({}));
-      if (j.ok) toast.success(`완료: 신규 공지 ${j.newNotices}건, 메일 ${j.emailsSent}통`, { id });
+      if (j.ok)
+        toast.success(
+          j.mailPaused ? `완료: 신규 공지 ${j.newNotices}건 · 발송 일시정지 중이라 메일은 보내지 않았어요` : `완료: 신규 공지 ${j.newNotices}건, 메일 ${j.emailsSent}통`,
+          { id },
+        );
       else toast.error("실행 실패", { id, description: String(j.error ?? res.status) });
       load();
       onCrawled();

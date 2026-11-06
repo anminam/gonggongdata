@@ -3,6 +3,7 @@ import { fetchNoticeList, fetchNoticeBody, PAGE_SIZE, type ListItem } from "./cr
 import { classify } from "./classify";
 import { renderEmail, sendMail, type NoticeRow } from "./mailer";
 import { hasAnyRule, matchKeywords, matchNotice, type AlertRule } from "./match";
+import { loadAppSettings } from "./settings";
 
 export { matchKeywords };
 
@@ -79,18 +80,21 @@ export async function runDaily() {
       newCount++;
     }
 
-    // 3. 사용자별 발송 (이미 보낸 공지는 빼고)
-    const notices = await recentNotices(db);
-    for (const u of await loadAlertUsers(db)) {
-      const r = await deliverToUser(db, u, notices, { resend: false });
-      if (r.status === "sent") emails++;
+    // 3. 사용자별 발송 (이미 보낸 공지는 빼고). 관리자가 발송을 일시정지했으면 건너뛴다
+    const settings = await loadAppSettings(db);
+    if (!settings.mail_paused) {
+      const notices = await recentNotices(db);
+      for (const u of await loadAlertUsers(db)) {
+        const r = await deliverToUser(db, u, notices, { resend: false, subjectTemplate: settings.subject_template });
+        if (r.status === "sent") emails++;
+      }
     }
 
     await db
       .from("gd_run_logs")
       .update({ status: "success", finished_at: new Date().toISOString(), new_notices: newCount, emails_sent: emails })
       .eq("id", log?.id);
-    return { ok: true, newNotices: newCount, emailsSent: emails };
+    return { ok: true, newNotices: newCount, emailsSent: emails, mailPaused: settings.mail_paused };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await db
@@ -157,7 +161,7 @@ export type DeliverResult = {
  * resend=true면 이미 보낸 공지도 다시 보내고(관리자 강제 재발송), 발송 기록은 새로 만들지 않고 시각만 갱신한다.
  * 관리자 재발송은 사용자가 '알림 받기'를 꺼 두었어도 보낸다.
  */
-export async function deliverToUser(db: Db, u: AlertUser, notices: NoticeRow[], { resend }: { resend: boolean }): Promise<DeliverResult> {
+export async function deliverToUser(db: Db, u: AlertUser, notices: NoticeRow[], { resend, subjectTemplate }: { resend: boolean; subjectTemplate?: string | null }): Promise<DeliverResult> {
   const base = { user_id: u.user_id, email: u.email };
   if (!resend && !u.enabled) return { ...base, status: "skipped", count: 0, reason: "알림 꺼짐" };
   if (!hasAnyRule(u.rule)) return { ...base, status: "skipped", count: 0, reason: "알림 조건 없음" };
@@ -172,7 +176,7 @@ export async function deliverToUser(db: Db, u: AlertUser, notices: NoticeRow[], 
   const hits = pickHits(notices, u.rule, sentIds);
   if (!hits.length) return { ...base, status: "skipped", count: 0, reason: resend ? "최근 7일 걸린 공지 없음" : "새 공지 없음" };
 
-  await sendMail(u.recipients, renderEmail(hits));
+  await sendMail(u.recipients, renderEmail(hits, false, subjectTemplate));
   const { error } = await db.from("gd_deliveries").upsert(
     hits.map((h) => ({
       user_id: u.user_id,
@@ -192,6 +196,7 @@ export async function testSendToUsers(userIds: string[]) {
   const db = adminClient();
   const notices = await recentNotices(db);
   const users = await loadAlertUsers(db, userIds);
+  const { subject_template } = await loadAppSettings(db);
   const results: DeliverResult[] = [];
   for (const u of users) {
     const base = { user_id: u.user_id, email: u.email };
@@ -207,7 +212,7 @@ export async function testSendToUsers(userIds: string[]) {
         results.push({ ...base, status: "skipped", count: 0, reason: "저장된 공지 없음" });
         continue;
       }
-      await sendMail(u.recipients, renderEmail(hits.slice(0, 10), true));
+      await sendMail(u.recipients, renderEmail(hits.slice(0, 10), true, subject_template));
       results.push({ ...base, status: "sent", count: Math.min(hits.length, 10) });
     } catch (e) {
       results.push({ ...base, status: "skipped", count: 0, reason: `실패: ${e instanceof Error ? e.message : String(e)}` });
@@ -221,10 +226,11 @@ export async function resendRecent(userIds: string[]) {
   const db = adminClient();
   const notices = await recentNotices(db);
   const users = await loadAlertUsers(db, userIds);
+  const { subject_template } = await loadAppSettings(db);
   const results: DeliverResult[] = [];
   for (const u of users) {
     try {
-      results.push(await deliverToUser(db, u, notices, { resend: true }));
+      results.push(await deliverToUser(db, u, notices, { resend: true, subjectTemplate: subject_template }));
     } catch (e) {
       results.push({ user_id: u.user_id, email: u.email, status: "skipped", count: 0, reason: `실패: ${e instanceof Error ? e.message : String(e)}` });
     }
@@ -235,12 +241,12 @@ export async function resendRecent(userIds: string[]) {
 export const ADMIN_PICK = "(관리자 발송)";
 
 /** 관리자 공지 지정 발송: 고른 공지 1건을 알림 조건과 상관없이 보내고 발송 기록을 남긴다 */
-export async function deliverNotice(db: Db, u: AlertUser, n: NoticeRow): Promise<DeliverResult> {
+export async function deliverNotice(db: Db, u: AlertUser, n: NoticeRow, subjectTemplate?: string | null): Promise<DeliverResult> {
   const base = { user_id: u.user_id, email: u.email };
   if (!u.recipients.length) return { ...base, status: "skipped", count: 0, reason: "수신 주소 없음" };
   const hit = matchNotice(n, u.rule);
   const matched = hit.length ? hit : [ADMIN_PICK];
-  await sendMail(u.recipients, renderEmail([{ ...n, matched }]));
+  await sendMail(u.recipients, renderEmail([{ ...n, matched }], false, subjectTemplate));
   const { error } = await db.from("gd_deliveries").upsert(
     { user_id: u.user_id, notice_id: n.notice_id, matched_keywords: matched, recipients: u.recipients, sent_at: new Date().toISOString() },
     { onConflict: "user_id,notice_id" },
@@ -258,10 +264,11 @@ export async function sendNoticeToUsers(noticeId: string, userIds: string[]) {
     .maybeSingle();
   if (error) throw error;
   if (!n) throw new Error("공지를 찾을 수 없어요");
+  const { subject_template } = await loadAppSettings(db);
   const results: DeliverResult[] = [];
   for (const u of await loadAlertUsers(db, userIds)) {
     try {
-      results.push(await deliverNotice(db, u, n as NoticeRow));
+      results.push(await deliverNotice(db, u, n as NoticeRow, subject_template));
     } catch (e) {
       results.push({ user_id: u.user_id, email: u.email, status: "skipped", count: 0, reason: `실패: ${e instanceof Error ? e.message : String(e)}` });
     }

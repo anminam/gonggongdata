@@ -2,6 +2,7 @@ import { adminClient, userFromRequest } from "@/lib/supabase";
 import { recentNotices, toRule } from "@/lib/run";
 import { matchNotice } from "@/lib/match";
 import { renderEmail, sendMail } from "@/lib/mailer";
+import { loadAppSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -30,7 +31,8 @@ export async function POST(req: Request) {
   if (!hits.length) return Response.json({ ok: false, error: "저장된 공지가 없습니다. 관리자가 먼저 크롤링을 실행해야 합니다." }, { status: 400 });
 
   try {
-    await sendMail(recipients, renderEmail(hits.slice(0, 10), true));
+    const { subject_template } = await loadAppSettings(db);
+    await sendMail(recipients, renderEmail(hits.slice(0, 10), true, subject_template));
     return Response.json({ ok: true, count: hits.length, recipients });
   } catch (e) {
     return Response.json({ ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
