@@ -87,7 +87,7 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;margin:0 auto">` +
     // 머리말: 화면 사이드바 로고와 같은 검은 사각 아이콘 + 서비스 이름
     `<tr><td style="padding:0 4px 16px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
-    `<td style="width:32px;height:32px;background:${C.primary};border-radius:8px;text-align:center;vertical-align:middle;color:#ffffff;font-size:15px">${ICON}</td>` +
+    ICON_CELL +
     `<td style="padding-left:10px;font-size:14px;font-weight:600;color:${C.text}">공공데이터 알림<div style="font-size:12px;font-weight:400;color:${C.muted}">API 공지 모니터링${test ? " · 테스트 발송" : ""}</div></td>` +
     `</tr></table></td></tr>` +
     // 요약 카드
@@ -123,6 +123,7 @@ export const MAIL_COLORS = {
   chip: "#f5f5f5",
 };
 const C = MAIL_COLORS;
+const ICON_CELL = `<td style="width:32px;height:32px;background:${C.primary};border-radius:8px;text-align:center;vertical-align:middle;color:#ffffff;font-size:15px">${ICON}</td>`;
 
 // 유형 배지 (색 + 아이콘 글자). 화면의 배지 색과 맞춘다. 색만으로 구분하지 않도록 글자를 같이 쓴다.
 const BADGE: Record<string, [bg: string, fg: string, border: string]> = {
@@ -201,7 +202,8 @@ export async function sendMail(to: string[], mail: { subject: string; text: stri
     from: `"공공데이터 공지 알림" <${sender.email}>`,
     to: to.join(", "),
     ...mail,
-    html: img ? mail.html.replace(`>${ICON}</td>`, `>${img}</td>`) : mail.html,
+    // 이미지일 땐 검은 배경 칸 대신 배경 없는 칸으로 바꾼다
+    html: img ? mail.html.replace(ICON_CELL, `<td style="width:32px;height:32px;vertical-align:middle">${img}</td>`) : mail.html,
   });
   const raw = Buffer.from(message as Buffer).toString("base64url");
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
