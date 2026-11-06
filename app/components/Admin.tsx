@@ -37,14 +37,19 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
   const [logs, setLogs] = useState<RunLog[]>([]);
   const [sender, setSender] = useState<Sender | undefined>(undefined);
   const [running, setRunning] = useState(false);
+  const [recipients, setRecipients] = useState<Map<string, string[]>>(new Map());
 
   const load = useCallback(async () => {
-    const [u, l] = await Promise.all([
+    const [u, l, r] = await Promise.all([
       supabase.from("gd_profiles").select("*").order("created_at", { ascending: false }),
       supabase.from("gd_run_logs").select("*").order("started_at", { ascending: false }).limit(20),
+      supabase.from("gd_recipients").select("user_id, email").order("id"),
     ]);
     setUsers((u.data ?? []) as Profile[]);
     setLogs((l.data ?? []) as RunLog[]);
+    const m = new Map<string, string[]>();
+    for (const x of (r.data ?? []) as { user_id: string; email: string }[]) m.set(x.user_id, [...(m.get(x.user_id) ?? []), x.email]);
+    setRecipients(m);
   }, [supabase]);
 
   useEffect(() => {
@@ -159,7 +164,7 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
         </SectionCard>
       </div>
 
-      <ResendCard ctx={ctx} users={approved} notices={notices} disabled={sender === null} onDone={load} />
+      <ResendCard ctx={ctx} users={approved} recipients={recipients} notices={notices} disabled={sender === null} onDone={load} />
 
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
@@ -247,7 +252,21 @@ type Mode = "test" | "resend" | "notice";
 const ENDPOINT: Record<Mode, string> = { test: "/api/admin/test-send", resend: "/api/admin/resend", notice: "/api/admin/send-notice" };
 
 /** 관리자 강제 발송: 고른 사용자에게 최근 7일 걸린 공지를 다시 보내거나, 고른 공지 1건을 보낸다 */
-function ResendCard({ ctx, users, notices, disabled, onDone }: { ctx: Ctx; users: Profile[]; notices: Notice[]; disabled: boolean; onDone: () => void }) {
+/** 계정(로그인 메일)과 실제로 메일이 가는 수신 주소를 함께 보여준다 */
+function UserLine({ email, to }: { email: string; to: string[] }) {
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-xs text-muted-foreground">계정 {email}</span>
+      {to.length ? (
+        <span className="block truncate">→ 받는 곳: {to.join(", ")}</span>
+      ) : (
+        <span className="block truncate text-destructive">→ 수신 주소 없음 (안 보내져요)</span>
+      )}
+    </span>
+  );
+}
+
+function ResendCard({ ctx, users, recipients, notices, disabled, onDone }: { ctx: Ctx; users: Profile[]; recipients: Map<string, string[]>; notices: Notice[]; disabled: boolean; onDone: () => void }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<Mode | null>(null);
   const [sending, setSending] = useState(false);
@@ -370,7 +389,7 @@ function ResendCard({ ctx, users, notices, disabled, onDone }: { ctx: Ctx; users
                 <li key={u.user_id}>
                   <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm hover:bg-muted/40">
                     <Checkbox checked={picked.has(u.user_id)} onCheckedChange={(v) => toggle(u.user_id, v === true)} />
-                    <span className="flex-1 truncate">{u.email}</span>
+                    <UserLine email={u.email} to={recipients.get(u.user_id) ?? []} />
                     {r &&
                       (r.status === "sent" ? (
                         <Badge variant="outline" className={STATUS.approved.className}><Send data-icon="inline-start" />{r.count}건 보냄</Badge>
@@ -403,7 +422,7 @@ function ResendCard({ ctx, users, notices, disabled, onDone }: { ctx: Ctx; users
           </DialogHeader>
           <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
             {users.filter((u) => picked.has(u.user_id)).map((u) => (
-              <li key={u.user_id} className="truncate text-muted-foreground">· {u.email}</li>
+              <li key={u.user_id} className="flex gap-1.5"><span className="text-muted-foreground">·</span><UserLine email={u.email} to={recipients.get(u.user_id) ?? []} /></li>
             ))}
           </ul>
           <DialogFooter>
