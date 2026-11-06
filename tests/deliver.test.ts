@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sendMail = vi.fn(async () => {});
 vi.mock("@/lib/mailer", async (orig) => ({ ...(await orig<typeof import("@/lib/mailer")>()), sendMail }));
 
-const { deliverToUser, pickHits } = await import("@/lib/run");
+const { deliverToUser, deliverNotice, pickHits, ADMIN_PICK } = await import("@/lib/run");
 type AlertUser = import("@/lib/run").AlertUser;
 type NoticeRow = import("@/lib/mailer").NoticeRow;
 
@@ -90,6 +90,28 @@ describe("deliverToUser: 관리자 강제 재발송", () => {
   it("최근 7일에 걸린 공지가 없으면 보내지 않는다", async () => {
     const r = await deliverToUser(fakeDb([]).db, user({ rule: { keywords: [], orgs: ["없는기관"], searchBody: false, types: null } }), notices, { resend: true });
     expect(r).toMatchObject({ status: "skipped", reason: "최근 7일 걸린 공지 없음" });
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+});
+
+describe("deliverNotice: 관리자 공지 지정 발송", () => {
+  it("조건에 안 걸려도 보내고 '(관리자 발송)'으로 기록한다", async () => {
+    const { db, upserts } = fakeDb([]);
+    const r = await deliverNotice(db, user(), notices[2]); // 조달청: 기상청 구독자 조건에 안 걸림
+    expect(r).toMatchObject({ status: "sent", count: 1 });
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(upserts[0].rows).toMatchObject({ notice_id: "C", matched_keywords: [ADMIN_PICK] });
+  });
+
+  it("조건에 걸리면 걸린 키워드로 기록한다", async () => {
+    const { db, upserts } = fakeDb([]);
+    await deliverNotice(db, user(), notices[0]);
+    expect((upserts[0].rows as unknown as { matched_keywords: string[] }).matched_keywords).not.toContain(ADMIN_PICK);
+  });
+
+  it("수신 주소가 없으면 보내지 않는다", async () => {
+    const r = await deliverNotice(fakeDb([]).db, user({ recipients: [] }), notices[0]);
+    expect(r).toMatchObject({ status: "skipped", reason: "수신 주소 없음" });
     expect(sendMail).not.toHaveBeenCalled();
   });
 });

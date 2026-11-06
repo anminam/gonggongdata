@@ -114,7 +114,7 @@ export default function AppShell({
             <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} reload={loadMine} />
           )}
           {page === "history" && <History ctx={ctx} />}
-          {page === "admin" && profile.is_admin && <Admin ctx={ctx} onCrawled={loadNotices} />}
+          {page === "admin" && profile.is_admin && <Admin ctx={ctx} onCrawled={loadNotices} notices={notices ?? []} />}
         </div>
       </SidebarInset>
     </SidebarProvider>

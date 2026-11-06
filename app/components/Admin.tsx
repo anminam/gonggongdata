@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Check, Clock, Mail, MailWarning, Play, RefreshCw, RotateCw, Send, UserCheck, Users, X } from "lucide-react";
+import { Ban, Check, Clock, FileText, Mail, MailWarning, Play, RefreshCw, RotateCw, Search, Send, UserCheck, Users, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -14,7 +14,8 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Ctx, fmtDateTime, PageHeader, Profile, SectionCard, StatCard } from "./shared";
+import { Input } from "@/components/ui/input";
+import { Ctx, fmtDateTime, Notice, PageHeader, Profile, SectionCard, StatCard, TypeBadge } from "./shared";
 
 type RunLog = { id: number; started_at: string; finished_at: string | null; status: string; new_notices: number; emails_sent: number; error: string | null };
 type Sender = { email: string; updated_at: string } | null;
@@ -30,7 +31,7 @@ const RUN = {
   running: { label: "실행 중", className: STATUS.pending.className },
 } as Record<string, { label: string; className: string }>;
 
-export default function Admin({ ctx, onCrawled }: { ctx: Ctx; onCrawled: () => void }) {
+export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled: () => void; notices: Notice[] }) {
   const { supabase, session } = ctx;
   const [users, setUsers] = useState<Profile[]>([]);
   const [logs, setLogs] = useState<RunLog[]>([]);
@@ -180,7 +181,7 @@ export default function Admin({ ctx, onCrawled }: { ctx: Ctx; onCrawled: () => v
         </SectionCard>
       </div>
 
-      <ResendCard ctx={ctx} users={approved} disabled={sender === null} onDone={load} />
+      <ResendCard ctx={ctx} users={approved} notices={notices} disabled={sender === null} onDone={load} />
 
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
@@ -263,14 +264,23 @@ export default function Admin({ ctx, onCrawled }: { ctx: Ctx; onCrawled: () => v
 }
 
 type ResendResult = { user_id: string; email: string; status: "sent" | "skipped"; count: number; reason?: string };
+type Mode = "test" | "resend" | "notice";
 
-/** 관리자 강제 재발송: 고른 사용자에게 최근 7일 걸린 공지를 이미 보낸 것까지 다시 보낸다 */
-function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile[]; disabled: boolean; onDone: () => void }) {
+const ENDPOINT: Record<Mode, string> = { test: "/api/admin/test-send", resend: "/api/admin/resend", notice: "/api/admin/send-notice" };
+
+/** 관리자 강제 발송: 고른 사용자에게 최근 7일 걸린 공지를 다시 보내거나, 고른 공지 1건을 보낸다 */
+function ResendCard({ ctx, users, notices, disabled, onDone }: { ctx: Ctx; users: Profile[]; notices: Notice[]; disabled: boolean; onDone: () => void }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [confirm, setConfirm] = useState(false);
+  const [confirm, setConfirm] = useState<Mode | null>(null);
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState<ResendResult[] | null>(null);
+  const [q, setQ] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
   const allOn = users.length > 0 && users.every((u) => picked.has(u.user_id));
+  const term = q.trim().toLowerCase();
+  const found = term
+    ? notices.filter((n) => [n.title, n.org, n.api_names].some((s) => s?.toLowerCase().includes(term))).slice(0, 8)
+    : [];
 
   const toggle = (id: string, on: boolean) =>
     setPicked((prev) => {
@@ -280,20 +290,21 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
       return next;
     });
 
-  const send = async (test = false) => {
-    setConfirm(false);
+  const send = async (mode: Mode) => {
+    setConfirm(null);
     setSending(true);
     setResults(null);
-    const id = toast.loading(`${picked.size}명에게 ${test ? "테스트 메일 " : "다시 "}보내는 중…`);
+    const what = mode === "test" ? "테스트 메일을 " : mode === "notice" ? "고른 공지를 " : "다시 ";
+    const id = toast.loading(`${picked.size}명에게 ${what}보내는 중…`);
     try {
-      const res = await fetch(test ? "/api/admin/test-send" : "/api/admin/resend", {
+      const res = await fetch(ENDPOINT[mode], {
         method: "POST",
         headers: { Authorization: `Bearer ${ctx.session.access_token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ user_ids: [...picked] }),
+        body: JSON.stringify({ user_ids: [...picked], ...(mode === "notice" ? { notice_id: notice?.notice_id } : {}) }),
       });
       const j = await res.json().catch(() => ({}));
       if (!j.ok) {
-        toast.error("재발송 실패", { id, description: String(j.error ?? res.status) });
+        toast.error("발송 실패", { id, description: String(j.error ?? res.status) });
         return;
       }
       const list = j.results as ResendResult[];
@@ -307,23 +318,68 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
     }
   };
 
+  const off = disabled || sending || picked.size === 0;
+  const count = picked.size ? ` (${picked.size}명)` : "";
+
   return (
     <SectionCard
-      title="강제 재발송"
-      description="고른 사용자에게 최근 7일 동안 알림 조건에 걸린 공지를, 이미 보낸 것까지 다시 메일로 보내요"
+      title="강제 발송"
+      description="고른 사용자에게 최근 7일 동안 알림 조건에 걸린 공지를 다시 보내거나, 고른 공지 1건을 보내요"
       action={
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => send(true)} disabled={disabled || sending || picked.size === 0}>
+          <Button size="sm" variant="outline" onClick={() => send("test")} disabled={off}>
             <Send /> 테스트 발송
           </Button>
-          <Button size="sm" onClick={() => setConfirm(true)} disabled={disabled || sending || picked.size === 0}>
-            {sending ? <Spinner /> : <RotateCw />} 다시 보내기{picked.size ? ` (${picked.size}명)` : ""}
+          <Button size="sm" onClick={() => setConfirm("resend")} disabled={off}>
+            {sending ? <Spinner /> : <RotateCw />} 다시 보내기{count}
           </Button>
         </div>
       }
     >
       <div className="space-y-3">
         {disabled && <p className="text-sm text-destructive">메일 발송 계정을 먼저 연결해야 보낼 수 있어요.</p>}
+
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="flex items-center gap-2 text-sm font-medium"><FileText className="size-4 text-primary" /> 특정 공지 보내기</div>
+          {notice ? (
+            <div className="flex items-start gap-3 rounded-md bg-accent/60 p-3">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="line-clamp-2 text-sm font-medium">{notice.title}</p>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="tabular-nums">{notice.registered_at}</span>
+                  <span>{notice.org ?? "기관 미상"}</span>
+                  <TypeBadge type={notice.notice_type} />
+                </div>
+              </div>
+              <Button size="icon" variant="ghost" aria-label="공지 선택 해제" onClick={() => setNotice(null)}><X /></Button>
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="공지 제목·기관·API명으로 검색" aria-label="보낼 공지 검색" className="pl-8" />
+              </div>
+              {term && (
+                <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
+                  {found.map((n) => (
+                    <li key={n.notice_id}>
+                      <button type="button" className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted/50" onClick={() => { setNotice(n); setQ(""); }}>
+                        <span className="w-20 shrink-0 tabular-nums text-xs text-muted-foreground">{n.registered_at}</span>
+                        <span className="flex-1 truncate">{n.title}</span>
+                        <TypeBadge type={n.notice_type} className="hidden sm:inline-flex" />
+                      </button>
+                    </li>
+                  ))}
+                  {!found.length && <li className="px-3 py-3 text-sm text-muted-foreground">검색 결과가 없어요.</li>}
+                </ul>
+              )}
+            </>
+          )}
+          <Button size="sm" className="w-full sm:w-auto" onClick={() => setConfirm("notice")} disabled={off || !notice}>
+            <Send /> 이 공지 보내기{count}
+          </Button>
+        </div>
+
         <div className="rounded-lg border">
           <label className="flex cursor-pointer items-center gap-3 border-b bg-muted/40 px-3 py-2 text-sm font-medium">
             <Checkbox checked={allOn} onCheckedChange={(v) => setPicked(v === true ? new Set(users.map((u) => u.user_id)) : new Set())} />
@@ -351,17 +407,20 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
           </ul>
         </div>
         <p className="text-xs text-muted-foreground">
-          각 사용자의 알림 조건(키워드·구독 기관·받을 유형)과 수신 주소를 그대로 써요. 사용자가 ‘알림 받기’를 꺼 두었어도 보내요.
+          각 사용자의 수신 주소로 보내요. 사용자가 ‘알림 받기’를 꺼 두었어도 보내요.
+          ‘다시 보내기’는 각자의 알림 조건(키워드·구독 기관·받을 유형)대로, ‘이 공지 보내기’는 조건과 상관없이 고른 공지를 보내고 발송 이력에 남겨요.
           ‘테스트 발송’은 제목에 [테스트]가 붙고 발송 기록이 남지 않으며, 걸린 공지가 없으면 최신 1건을 샘플로 보내요.
         </p>
       </div>
 
-      <Dialog open={confirm} onOpenChange={setConfirm}>
+      <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{picked.size}명에게 다시 보낼까요?</DialogTitle>
+            <DialogTitle>{picked.size}명에게 {confirm === "notice" ? "이 공지를 보낼까요?" : "다시 보낼까요?"}</DialogTitle>
             <DialogDescription>
-              최근 7일 동안 각자의 알림 조건에 걸린 공지를, 이미 받은 공지까지 포함해 메일 1통으로 다시 보내요. 보낸 메일은 되돌릴 수 없어요.
+              {confirm === "notice"
+                ? `「${notice?.title ?? ""}」 공지 1건을 알림 조건과 상관없이 메일로 보내요. 보낸 메일은 되돌릴 수 없어요.`
+                : "최근 7일 동안 각자의 알림 조건에 걸린 공지를, 이미 받은 공지까지 포함해 메일 1통으로 다시 보내요. 보낸 메일은 되돌릴 수 없어요."}
             </DialogDescription>
           </DialogHeader>
           <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
@@ -371,7 +430,7 @@ function ResendCard({ ctx, users, disabled, onDone }: { ctx: Ctx; users: Profile
           </ul>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">취소</Button></DialogClose>
-            <Button onClick={() => send()}><Send /> 보내기</Button>
+            <Button onClick={() => confirm && send(confirm)}><Send /> 보내기</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -231,3 +231,40 @@ export async function resendRecent(userIds: string[]) {
   }
   return results;
 }
+
+export const ADMIN_PICK = "(관리자 발송)";
+
+/** 관리자 공지 지정 발송: 고른 공지 1건을 알림 조건과 상관없이 보내고 발송 기록을 남긴다 */
+export async function deliverNotice(db: Db, u: AlertUser, n: NoticeRow): Promise<DeliverResult> {
+  const base = { user_id: u.user_id, email: u.email };
+  if (!u.recipients.length) return { ...base, status: "skipped", count: 0, reason: "수신 주소 없음" };
+  const hit = matchNotice(n, u.rule);
+  const matched = hit.length ? hit : [ADMIN_PICK];
+  await sendMail(u.recipients, renderEmail([{ ...n, matched }]));
+  const { error } = await db.from("gd_deliveries").upsert(
+    { user_id: u.user_id, notice_id: n.notice_id, matched_keywords: matched, recipients: u.recipients, sent_at: new Date().toISOString() },
+    { onConflict: "user_id,notice_id" },
+  );
+  if (error) throw error;
+  return { ...base, status: "sent", count: 1 };
+}
+
+export async function sendNoticeToUsers(noticeId: string, userIds: string[]) {
+  const db = adminClient();
+  const { data: n, error } = await db
+    .from("gd_notices")
+    .select("notice_id, org, title, api_names, registered_at, body, url, notice_type")
+    .eq("notice_id", noticeId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!n) throw new Error("공지를 찾을 수 없어요");
+  const results: DeliverResult[] = [];
+  for (const u of await loadAlertUsers(db, userIds)) {
+    try {
+      results.push(await deliverNotice(db, u, n as NoticeRow));
+    } catch (e) {
+      results.push({ user_id: u.user_id, email: u.email, status: "skipped", count: 0, reason: `실패: ${e instanceof Error ? e.message : String(e)}` });
+    }
+  }
+  return results;
+}
