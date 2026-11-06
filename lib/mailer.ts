@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { classify } from "./classify";
 import { adminClient } from "./supabase";
 import { ORG_PREFIX } from "./match";
+import { findAvatar } from "./avatars";
 
 export type NoticeRow = {
   notice_id: string;
@@ -13,6 +14,10 @@ export type NoticeRow = {
   url: string;
   notice_type?: string | null;
 };
+
+const site = "https://gonggongdata.anminam.com";
+// 머리말 아이콘 자리. 발송 시 관리자 프로필 이미지가 있으면 그 이미지로 바뀐다.
+const ICON = "🔔";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -77,13 +82,12 @@ export function renderEmail(notices: (NoticeRow & { matched: string[] })[], test
     })
     .join("");
 
-  const site = "https://gonggongdata.anminam.com";
   const html =
     `<div style="background:${C.bg};padding:28px 12px;font-family:${font};color:${C.text}">` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;margin:0 auto">` +
     // 머리말: 화면 사이드바 로고와 같은 검은 사각 아이콘 + 서비스 이름
     `<tr><td style="padding:0 4px 16px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
-    `<td style="width:32px;height:32px;background:${C.primary};border-radius:8px;text-align:center;vertical-align:middle;color:#ffffff;font-size:15px">🔔</td>` +
+    `<td style="width:32px;height:32px;background:${C.primary};border-radius:8px;text-align:center;vertical-align:middle;color:#ffffff;font-size:15px">${ICON}</td>` +
     `<td style="padding-left:10px;font-size:14px;font-weight:600;color:${C.text}">공공데이터 알림<div style="font-size:12px;font-weight:400;color:${C.muted}">API 공지 모니터링${test ? " · 테스트 발송" : ""}</div></td>` +
     `</tr></table></td></tr>` +
     // 요약 카드
@@ -150,10 +154,19 @@ const TIMEOUT_MS = 15_000;
 const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "unix" });
 
 async function getSender() {
-  const { data, error } = await adminClient().from("gd_mail_sender").select("email, refresh_token").eq("id", 1).maybeSingle();
+  const { data, error } = await adminClient().from("gd_mail_sender").select("email, refresh_token, connected_by").eq("id", 1).maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("연결된 Gmail 발송 계정이 없습니다. 관리자 탭에서 'Gmail 발송 계정 연결'을 눌러주세요.");
-  return data as { email: string; refresh_token: string };
+  return data as { email: string; refresh_token: string; connected_by: string | null };
+}
+
+// 발송 계정을 연결한 관리자의 프로필 이미지 <img>. 없거나 조회 실패면 null(기본 🔔 유지, 발송은 계속).
+async function senderAvatarImg(userId: string | null) {
+  if (!userId) return null;
+  const { data } = await adminClient().auth.admin.getUserById(userId);
+  const avatar = findAvatar(data.user?.user_metadata?.gd_avatar);
+  if (!avatar) return null;
+  return `<img src="${site}${avatar.src}" width="32" height="32" alt="${esc(avatar.label)}" style="display:block;width:32px;height:32px;border-radius:8px;border:0">`;
 }
 
 async function getAccessToken(refreshToken: string) {
@@ -180,11 +193,15 @@ async function getAccessToken(refreshToken: string) {
 
 export async function sendMail(to: string[], mail: { subject: string; text: string; html: string }) {
   const sender = await getSender();
-  const accessToken = await getAccessToken(sender.refresh_token);
+  const [accessToken, img] = await Promise.all([
+    getAccessToken(sender.refresh_token),
+    senderAvatarImg(sender.connected_by).catch(() => null),
+  ]);
   const { message } = await composer.sendMail({
     from: `"공공데이터 공지 알림" <${sender.email}>`,
     to: to.join(", "),
     ...mail,
+    html: img ? mail.html.replace(`>${ICON}</td>`, `>${img}</td>`) : mail.html,
   });
   const raw = Buffer.from(message as Buffer).toString("base64url");
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
