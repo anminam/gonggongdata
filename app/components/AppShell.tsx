@@ -5,7 +5,7 @@ import type { AlertRule } from "@/lib/match";
 import type { Session } from "@supabase/supabase-js";
 import { useTheme } from "next-themes";
 import {
-  Bell, ChevronsUpDown, FileText, History as HistoryIcon, LayoutDashboard, LogOut, Monitor, Moon, Shield, Sun,
+  Bell, ChevronsUpDown, FileText, History as HistoryIcon, LayoutDashboard, UserRoundPen, LogOut, Monitor, Moon, Shield, Sun,
 } from "lucide-react";
 import type { browserClient } from "@/lib/supabase";
 import {
@@ -17,11 +17,13 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Notice, Profile } from "./shared";
+import AvatarPicker from "./AvatarPicker";
+import { findAvatar } from "@/lib/avatars";
 import Overview from "./Overview";
 import Notices from "./Notices";
 import Alerts, { type ListItem } from "./Alerts";
@@ -93,7 +95,7 @@ export default function AppShell({
 
   return (
     <SidebarProvider>
-      <AppSidebar page={page} go={go} profile={profile} onLogout={onLogout} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
+      <AppSidebar supabase={supabase} session={session} page={page} go={go} profile={profile} onLogout={onLogout} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
@@ -120,8 +122,9 @@ export default function AppShell({
 }
 
 function AppSidebar({
-  page, go, profile, onLogout, noticeCount, keywordCount,
+  page, go, profile, onLogout, noticeCount, keywordCount, supabase, session,
 }: {
+  supabase: ReturnType<typeof browserClient>; session: Session;
   page: Page; go: (p: Page) => void; profile: Profile; onLogout: () => void; noticeCount?: number; keywordCount: number;
 }) {
   const { isMobile, setOpenMobile } = useSidebar();
@@ -182,24 +185,30 @@ function AppSidebar({
         )}
       </SidebarContent>
       <SidebarFooter>
-        <UserMenu profile={profile} onLogout={onLogout} />
+        <UserMenu supabase={supabase} session={session} profile={profile} onLogout={onLogout} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );
 }
 
-function UserMenu({ profile, onLogout }: { profile: Profile; onLogout: () => void }) {
+function UserMenu({ profile, onLogout, supabase, session }: { profile: Profile; onLogout: () => void; supabase: ReturnType<typeof browserClient>; session: Session }) {
+  const [avatarId, setAvatarId] = useState<string | undefined>(findAvatar(session.user.user_metadata.gd_avatar)?.id);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const avatar = findAvatar(avatarId);
   const { isMobile } = useSidebar();
   const { theme, setTheme } = useTheme();
   const initial = profile.email.slice(0, 1).toUpperCase();
   return (
+    <>
+    <AvatarPicker open={pickerOpen} onOpenChange={setPickerOpen} current={avatarId} supabase={supabase} onSaved={setAvatarId} />
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
               <Avatar className="size-8 rounded-lg">
+                {avatar && <AvatarImage src={avatar.src} alt={avatar.label} className="rounded-lg" />}
                 <AvatarFallback className="rounded-lg">{initial}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
@@ -216,6 +225,8 @@ function UserMenu({ profile, onLogout }: { profile: Profile; onLogout: () => voi
                 <span className="text-xs text-muted-foreground">{profile.is_admin ? "관리자 계정" : "승인된 사용자"}</span>
               </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setPickerOpen(true)}><UserRoundPen />프로필 이미지 변경</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">테마</DropdownMenuLabel>
@@ -234,6 +245,7 @@ function UserMenu({ profile, onLogout }: { profile: Profile; onLogout: () => voi
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
+    </>
   );
 }
 
