@@ -7,6 +7,8 @@ import { loadAppSettings } from "@/lib/settings";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const TEST_SEND_GAP_MS = 10 * 60_000;
+
 // 내 알림 조건(키워드·구독 기관·받을 유형)으로 최근 7일 공지를 내 수신자에게 테스트 발송 (발송 기록은 남기지 않음)
 export async function POST(req: Request) {
   const me = await userFromRequest(req);
@@ -23,6 +25,22 @@ export async function POST(req: Request) {
   if (!recipients.length) return Response.json({ ok: false, error: "수신 메일주소를 먼저 추가하세요" }, { status: 400 });
 
   const notices = await recentNotices(db);
+  if (!notices.length) return Response.json({ ok: false, error: "저장된 공지가 없습니다. 관리자가 먼저 크롤링을 실행해야 합니다." }, { status: 400 });
+
+  // 관리자 Gmail 남용 방지: 일반 사용자는 10분에 1번만 (기록 갱신이 한 번에 하나만 성공해 동시 요청도 막힌다)
+  if (!me.is_admin) {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - TEST_SEND_GAP_MS).toISOString();
+    const { data: claimed, error: claimErr } = await db
+      .from("gd_user_settings")
+      .update({ last_test_sent_at: now.toISOString() })
+      .eq("user_id", me.user_id)
+      .or(`last_test_sent_at.is.null,last_test_sent_at.lt.${cutoff}`)
+      .select("user_id");
+    if (claimErr) return Response.json({ ok: false, error: "잠시 후 다시 시도해 주세요." }, { status: 500 });
+    if (!claimed?.length) return Response.json({ ok: false, error: "테스트 메일은 10분에 한 번만 보낼 수 있어요." }, { status: 429 });
+  }
+
   let hits = notices
     .map((n) => ({ ...n, matched: matchNotice(n, rule) }))
     .filter((n) => n.matched.length > 0);

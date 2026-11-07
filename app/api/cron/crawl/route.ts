@@ -5,7 +5,9 @@ export const maxDuration = 60;
 
 // Vercel Cron: 매일 05:00 UTC = 14:00 KST
 export async function GET(req: Request) {
-  if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  // 비밀값이 비어 있으면 "Bearer undefined"로 통과되지 않게 무조건 거절
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
   try {
