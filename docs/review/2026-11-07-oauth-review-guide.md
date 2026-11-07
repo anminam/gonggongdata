@@ -82,6 +82,15 @@ Regular users only sign in with basic profile scopes (email, profile).
 
 이메일 동의항목은 쓰지 않는다(이메일은 서비스 안에서 6자리 코드로 따로 인증). 그래서 **비즈 앱 전환이나 동의항목 검수는 필요 없다.**
 
+### 2.0 지금 상태 (2026-11-07 설정함)
+- 카카오 앱: **공공데이터 API 공지 알림 (앱 ID 1640805)**, 회사명 안훈민, 카테고리 생산성/도구, 대표 도메인 https://gonggongdata.anminam.com
+- 카카오 로그인: ON
+- REST API 키의 카카오 로그인 리다이렉트 URI: `https://jucqpfazhlrnrohkfiyg.supabase.co/auth/v1/callback`
+- 클라이언트 시크릿: 기본 활성화(ON)
+- 동의항목: 닉네임 필수 동의, 프로필 사진 선택 동의, 이메일은 권한 없음(비즈 앱 아님)
+- 남은 일: Supabase(Auth > Providers > Kakao)에 REST API 키·클라이언트 시크릿 입력, "Allow users without an email" ON → 로그인 테스트
+- 선택: 카카오 동의항목 화면의 "개인정보 국외이전 정보 등록"(Supabase 서버가 인도라서). 방침 5번에는 이미 적어 둠
+
 ### 2.1 확인할 것
 | 위치 | 값 |
 |---|---|
