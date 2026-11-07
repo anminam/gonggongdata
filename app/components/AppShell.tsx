@@ -52,6 +52,7 @@ export default function AppShell({
   const [orgs, setOrgs] = useState<ListItem[]>([]);
   const [searchBody, setSearchBody] = useState(false);
   const [notifyTypes, setNotifyTypes] = useState<string[] | null>(null);
+  const [receiveAll, setReceiveAll] = useState(false);
   const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>({});
   const [avatarId, setAvatarId] = useState<string | undefined>(findAvatar(session.user.user_metadata.gd_avatar)?.id);
 
@@ -69,12 +70,13 @@ export default function AppShell({
     const [k, o, s] = await Promise.all([
       supabase.from("gd_keywords").select("id, keyword").eq("user_id", profile.user_id).order("id"),
       supabase.from("gd_org_subscriptions").select("id, org").eq("user_id", profile.user_id).order("org"),
-      supabase.from("gd_user_settings").select("search_body, notify_types").eq("user_id", profile.user_id).maybeSingle(),
+      supabase.from("gd_user_settings").select("search_body, notify_types, receive_all").eq("user_id", profile.user_id).maybeSingle(),
     ]);
     setKeywords((k.data ?? []).map((x) => ({ id: x.id, value: x.keyword })));
     setOrgs((o.data ?? []).map((x) => ({ id: x.id, value: x.org })));
     setSearchBody(!!s.data?.search_body);
     setNotifyTypes(s.data?.notify_types ?? null);
+    setReceiveAll(!!s.data?.receive_all);
   }, [supabase, profile.user_id]);
 
   useEffect(() => {
@@ -83,10 +85,10 @@ export default function AppShell({
   }, [loadNotices, loadMine]);
 
   const ctx = { supabase, session, profile };
-  // 서버 발송과 같은 알림 조건 (키워드 OR 구독 기관, 받을 유형만)
+  // 서버 발송과 같은 알림 조건 (키워드 OR 구독 기관 또는 모든 공지, 받을 유형만)
   const rule = useMemo<AlertRule>(
-    () => ({ keywords: keywords.map((k) => k.value), orgs: orgs.map((o) => o.value), searchBody, types: notifyTypes }),
-    [keywords, orgs, searchBody, notifyTypes],
+    () => ({ keywords: keywords.map((k) => k.value), orgs: orgs.map((o) => o.value), searchBody, types: notifyTypes, all: receiveAll }),
+    [keywords, orgs, searchBody, notifyTypes, receiveAll],
   );
   const go = (p: Page, filter: NoticeFilter = {}) => {
     setNoticeFilter(filter);
@@ -115,7 +117,7 @@ export default function AppShell({
           {page === "overview" && <Overview ctx={ctx} notices={notices} rule={rule} go={go} />}
           {page === "notices" && <Notices notices={notices} rule={rule} initial={noticeFilter} />}
           {page === "alerts" && (
-            <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} reload={loadMine} />
+            <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} receiveAll={receiveAll} reload={loadMine} />
           )}
           {page === "history" && <History ctx={ctx} />}
           {page === "settings" && <Settings ctx={ctx} avatarId={avatarId} onAvatarSaved={setAvatarId} />}

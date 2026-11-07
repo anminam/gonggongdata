@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasAnyRule, matchKeywords, matchNotice, typeAllowed, type AlertRule, type MatchableNotice } from "@/lib/match";
+import { ALL_REASON, hasAnyRule, matchKeywords, matchNotice, typeAllowed, type AlertRule, type MatchableNotice } from "@/lib/match";
 
 const N = (o: Partial<MatchableNotice> = {}): MatchableNotice => ({
   title: "[기상청] 서리발생 예측정보 OPEN API 변경",
@@ -59,4 +59,11 @@ describe("hasAnyRule", () => {
   it("키워드·기관이 모두 없으면 false", () => expect(hasAnyRule(R())).toBe(false));
   it("기관만 있어도 true", () => expect(hasAnyRule(R({ orgs: ["x"] }))).toBe(true));
   it("키워드만 있어도 true", () => expect(hasAnyRule(R({ keywords: ["x"] }))).toBe(true));
+});
+
+describe("모든 공지 받기 (all)", () => {
+  it("조건이 없어도 모든 공지가 '전체 공지'로 걸린다", () => expect(matchNotice(N(), R({ all: true }))).toEqual([ALL_REASON]));
+  it("키워드로도 걸리면 키워드 이유를 보여 준다", () => expect(matchNotice(N(), R({ all: true, keywords: ["서리"] }))).toEqual(["서리"]));
+  it("받을 유형 거르기는 그대로 적용된다", () => expect(matchNotice(N(), R({ all: true, types: ["API 변경"] }))).toEqual([]));
+  it("켜면 hasAnyRule이 true", () => expect(hasAnyRule(R({ all: true }))).toBe(true));
 });

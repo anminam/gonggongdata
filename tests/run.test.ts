@@ -58,8 +58,11 @@ describe("collectFreshNotices: 여러 페이지 크롤링", () => {
 });
 
 describe("toRule: 사용자 설정 → 알림 조건", () => {
-  it("설정이 없으면 본문 검사 끔·모든 유형", () => {
-    expect(toRule(["a"], ["b"], null)).toEqual({ keywords: ["a"], orgs: ["b"], searchBody: false, types: null });
+  it("설정이 없으면 본문 검사 끔·모든 유형·모든 공지 받기 끔", () => {
+    expect(toRule(["a"], ["b"], null)).toEqual({ keywords: ["a"], orgs: ["b"], searchBody: false, types: null, all: false });
+  });
+  it("receive_all을 반영한다", () => {
+    expect(toRule([], [], { receive_all: true })).toMatchObject({ all: true });
   });
   it("notify_types와 search_body를 반영한다", () => {
     expect(toRule([], [], { search_body: true, notify_types: ["URL 변경"] })).toMatchObject({ searchBody: true, types: ["URL 변경"] });

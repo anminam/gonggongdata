@@ -60,8 +60,9 @@ export default function Overview({
   const loading = notices === null;
   const hasRule = hasAnyRule(rule);
   const ruleDesc = [
-    rule.keywords.length ? `키워드 ${rule.keywords.length}개` : "",
-    rule.orgs.length ? `기관 ${rule.orgs.length}곳` : "",
+    rule.all ? "모든 공지" : "",
+    !rule.all && rule.keywords.length ? `키워드 ${rule.keywords.length}개` : "",
+    !rule.all && rule.orgs.length ? `기관 ${rule.orgs.length}곳` : "",
     rule.types ? `유형 ${rule.types.length}개` : "",
   ].filter(Boolean).join(" · ");
 

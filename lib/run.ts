@@ -56,9 +56,9 @@ export async function collectFreshNotices(db: Db, fetchPage = fetchNoticeList) {
 export function toRule(
   keywords: string[],
   orgs: string[],
-  settings: { search_body?: boolean | null; notify_types?: string[] | null } | null | undefined,
+  settings: { search_body?: boolean | null; notify_types?: string[] | null; receive_all?: boolean | null } | null | undefined,
 ): AlertRule {
-  return { keywords, orgs, searchBody: !!settings?.search_body, types: settings?.notify_types ?? null };
+  return { keywords, orgs, searchBody: !!settings?.search_body, types: settings?.notify_types ?? null, all: !!settings?.receive_all };
 }
 
 export async function recentNotices(db = adminClient()) {
@@ -177,7 +177,7 @@ export async function loadAlertUsers(db: Db, userIds?: string[]): Promise<AlertU
   let q = db
     .from("gd_profiles")
     .select(
-      "user_id, email, gd_user_settings(search_body, enabled, notify_types), gd_keywords(keyword), gd_org_subscriptions(org), gd_recipients(email)",
+      "user_id, email, gd_user_settings(search_body, enabled, notify_types, receive_all), gd_keywords(keyword), gd_org_subscriptions(org), gd_recipients(email)",
     )
     .eq("status", "approved");
   if (userIds) q = q.in("user_id", userIds);

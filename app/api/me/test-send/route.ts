@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     db.from("gd_keywords").select("keyword").eq("user_id", me.user_id),
     db.from("gd_org_subscriptions").select("org").eq("user_id", me.user_id),
     db.from("gd_recipients").select("email").eq("user_id", me.user_id),
-    db.from("gd_user_settings").select("search_body, notify_types").eq("user_id", me.user_id).maybeSingle(),
+    db.from("gd_user_settings").select("search_body, notify_types, receive_all").eq("user_id", me.user_id).maybeSingle(),
   ]);
   const rule = toRule((kw ?? []).map((k) => k.keyword), (og ?? []).map((o) => o.org), st);
   const recipients = (rc ?? []).map((r) => r.email);

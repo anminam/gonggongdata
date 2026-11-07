@@ -22,9 +22,9 @@ export type ListItem = { id: number; value: string };
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export default function Alerts({
-  ctx, notices, keywords, orgs, searchBody, notifyTypes, reload,
+  ctx, notices, keywords, orgs, searchBody, notifyTypes, receiveAll, reload,
 }: {
-  ctx: Ctx; notices: Notice[]; keywords: ListItem[]; orgs: ListItem[]; searchBody: boolean; notifyTypes: string[] | null;
+  ctx: Ctx; notices: Notice[]; keywords: ListItem[]; orgs: ListItem[]; searchBody: boolean; notifyTypes: string[] | null; receiveAll: boolean;
   reload: () => Promise<void>;
 }) {
   const { supabase, session } = ctx;
@@ -32,6 +32,8 @@ export default function Alerts({
   const [rcCount, setRcCount] = useState(0);
   const [enabled, setEnabled] = useState(true);
   const [body, setBody] = useState(searchBody);
+  const [all, setAll] = useState(receiveAll);
+  useEffect(() => setAll(receiveAll), [receiveAll]);
   const [types, setTypes] = useState<string[] | null>(notifyTypes);
   useEffect(() => setTypes(notifyTypes), [notifyTypes]);
   const [kwInput, setKwInput] = useState("");
@@ -49,11 +51,11 @@ export default function Alerts({
     loadLocal();
   }, [loadLocal]);
 
-  const saveSetting = async (patch: { search_body?: boolean; enabled?: boolean; notify_types?: string[] | null }) => {
+  const saveSetting = async (patch: { search_body?: boolean; enabled?: boolean; notify_types?: string[] | null; receive_all?: boolean }) => {
     const { error } = await supabase.from("gd_user_settings").upsert({ user_id: uid, ...patch, updated_at: new Date().toISOString() });
     if (error) return toast.error(`저장 실패: ${error.message}`);
     toast.success("설정을 저장했어요");
-    if (patch.search_body !== undefined || patch.notify_types !== undefined) reload();
+    if (patch.search_body !== undefined || patch.notify_types !== undefined || patch.receive_all !== undefined) reload();
   };
 
   const countOf = useMemo(() => {
@@ -162,7 +164,7 @@ export default function Alerts({
                   </Button>
                 </Badge>
               ))}
-              {!keywords.length && <p className="text-sm text-muted-foreground">아직 키워드가 없어요. 키워드와 구독 기관이 모두 없으면 메일이 가지 않아요.</p>}
+              {!keywords.length && <p className="text-sm text-muted-foreground">아직 키워드가 없어요. 키워드와 구독 기관이 모두 없으면 메일이 가지 않아요(&lsquo;모든 공지 받기&rsquo;를 켜면 전부 받아요).</p>}
             </div>
 
             {suggestions.length > 0 && (
@@ -198,6 +200,14 @@ export default function Alerts({
                   <FieldDescription>끄면 매일 발송에서 빠져요.</FieldDescription>
                 </FieldContent>
                 <Switch id="enabled" checked={enabled} onCheckedChange={(v) => { setEnabled(v); saveSetting({ enabled: v }); }} />
+              </Field>
+              <FieldSeparator />
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldLabel htmlFor="all">모든 공지 받기</FieldLabel>
+                  <FieldDescription>키워드·구독 기관과 상관없이 새 공지를 전부 받아요. 받을 유형은 그대로 적용돼요.</FieldDescription>
+                </FieldContent>
+                <Switch id="all" checked={all} onCheckedChange={(v) => { setAll(v); saveSetting({ receive_all: v }); }} />
               </Field>
               <FieldSeparator />
               <Field orientation="horizontal">
