@@ -27,7 +27,7 @@ export default function PrivacyPage() {
             </tr>
             <tr>
               <td>카카오 로그인</td>
-              <td>카카오 회원번호, 닉네임, 프로필 사진(이용자가 동의한 경우)</td>
+              <td>카카오 회원번호, 닉네임, 프로필 사진·이메일 주소(선택 항목에 동의한 경우)</td>
               <td>회원 식별, 로그인</td>
             </tr>
             <tr>
@@ -118,7 +118,7 @@ export default function PrivacyPage() {
             <tr>
               <td>(주)카카오 (대한민국)</td>
               <td>카카오 로그인</td>
-              <td>카카오 회원번호, 닉네임, 프로필 사진</td>
+              <td>카카오 회원번호, 닉네임, 프로필 사진·이메일 주소(동의한 경우)</td>
               <td>카카오 보관 정책에 따름</td>
             </tr>
           </tbody>

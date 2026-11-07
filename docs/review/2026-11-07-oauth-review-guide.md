@@ -80,15 +80,19 @@ Regular users only sign in with basic profile scopes (email, profile).
 
 ## 2. 카카오 (Kakao Developers)
 
-이메일 동의항목은 쓰지 않는다(이메일은 서비스 안에서 6자리 코드로 따로 인증). 그래서 **비즈 앱 전환이나 동의항목 검수는 필요 없다.**
+이메일은 꼭 받을 필요가 없다(없으면 서비스 안에서 6자리 코드로 인증). 다만 Supabase가 이메일 권한을 항상 요청해서 **개인 개발자 비즈 앱으로 전환하고 이메일을 "선택 동의"로 켜 두었다.** 동의항목 검수는 필요 없다(필수 동의가 아니므로).
 
 ### 2.0 지금 상태 (2026-11-07 설정함)
 - 카카오 앱: **공공데이터 API 공지 알림 (앱 ID 1640805)**, 회사명 안훈민, 카테고리 생산성/도구, 대표 도메인 https://gonggongdata.anminam.com
 - 카카오 로그인: ON
 - REST API 키의 카카오 로그인 리다이렉트 URI: `https://jucqpfazhlrnrohkfiyg.supabase.co/auth/v1/callback`
 - 클라이언트 시크릿: 기본 활성화(ON)
-- 동의항목: 닉네임 필수 동의, 프로필 사진 선택 동의, 이메일은 권한 없음(비즈 앱 아님)
-- 남은 일: Supabase(Auth > Providers > Kakao)에 REST API 키·클라이언트 시크릿 입력, "Allow users without an email" ON → 로그인 테스트
+- 동의항목: 닉네임 필수 동의, 프로필 사진 선택 동의, 이메일 선택 동의(개인 개발자 비즈 앱)
+- Supabase(Auth > Providers > Kakao): 새 앱 키·시크릿 입력함, "Allow users without an email" ON
+- **Supabase는 카카오에 `account_email profile_image profile_nickname`을 항상 요청한다** (supabase/auth `kakao.go`에 고정, "Allow users without an email"을 켜도, `scopes`를 줘도 빠지지 않음). 그래서 이메일 항목이 "권한 없음"이면 KOE205로 막힌다.
+- 해결: 앱 아이콘(`docs/review/app-icon-128.png`) 등록 → **개인 개발자 비즈 앱 전환** → 이메일 **선택 동의**. 2026-11-07 동의 화면이 정상으로 뜨는 것 확인
+- 이메일은 선택이라 사용자가 거부할 수 있고, 거부하면 서비스 안에서 6자리 코드로 인증한다. 방침 1·5번에 "이메일(동의한 경우)" 적음
+- 참고: IE CREW는 Supabase 로그인을 쓰지 않고 카카오 OAuth를 직접 구현해서 이메일 없이 됐던 것
 - 선택: 카카오 동의항목 화면의 "개인정보 국외이전 정보 등록"(Supabase 서버가 인도라서). 방침 5번에는 이미 적어 둠
 
 ### 2.1 확인할 것
@@ -97,17 +101,16 @@ Regular users only sign in with basic profile scopes (email, profile).
 | 앱 설정 > 앱 > 일반 > 앱 이름·아이콘 | 공공데이터 API 공지 알림, 서비스 아이콘 |
 | 앱 설정 > 플랫폼 > Web 사이트 도메인 | https://gonggongdata.anminam.com |
 | 카카오 로그인 > 리다이렉트 URI | `https://jucqpfazhlrnrohkfiyg.supabase.co/auth/v1/callback` |
-| 카카오 로그인 > 동의항목 | 닉네임·프로필 사진만. **이메일(account_email)은 "사용 안 함"** |
+| 카카오 로그인 > 동의항목 | 닉네임 필수, 프로필 사진·이메일 선택 |
 | 앱 설정 > 앱 > 일반 > 개인정보 처리방침 URL (메뉴가 있으면) | https://gonggongdata.anminam.com/privacy |
 
-**확인 필요**: Supabase의 카카오 로그인은 기본으로 `account_email` 범위를 함께 요청한다. 지금 카카오 로그인이 오류 없이 되고 있다면 콘솔 설정이 맞는 것이지만, 동의 화면에 이메일 항목이 보이거나 KOE205 오류가 나면 Supabase 대시보드(Auth > Providers > Kakao)나 로그인 코드(`app/page.tsx`의 `signInWithOAuth`)에서 요청 범위를 `profile_nickname profile_image`로 줄여야 한다.
 
 ### 2.2 방침과 맞춰야 할 점
-- 개인정보처리방침 1번에 "카카오 회원번호, 닉네임, 프로필 사진(동의한 경우)"으로 적었다. 동의항목을 바꾸면 방침도 같이 고친다.
+- 개인정보처리방침 1·5번에 "카카오 회원번호, 닉네임, 프로필 사진·이메일 주소(동의한 경우)"로 적었다. 동의항목을 바꾸면 방침도 같이 고친다.
 
 ---
 
 ## 3. 남은 결정 / 확인 필요
-- 앱 로고 PNG 파일 준비 (120×120)
+- 구글 동의 화면 로고: `docs/review/app-icon-120.png` (120×120)
 - 서버 접속 기록 보관 기간은 Vercel·Supabase 정책을 따른다고만 적음 — 정확한 일수 **확인 필요**
 - 방침의 Supabase 서버 위치(인도 뭄바이, ap-south-1)는 2026-11-07 기준 프로젝트 설정에서 확인함
