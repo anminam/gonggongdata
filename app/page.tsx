@@ -12,6 +12,8 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Profile } from "./components/shared";
 import AppShell, { ThemeToggle } from "./components/AppShell";
 import EmailVerify from "./components/EmailVerify";
+import { LegalLinks } from "./components/LegalPage";
+import Link from "next/link";
 
 export default function Home() {
   const supabase = useMemo(() => browserClient(), []);
@@ -153,6 +155,11 @@ export default function Home() {
               <Info className="mt-0.5 size-4 shrink-0" />
               처음 로그인하면 관리자 승인 후 이용할 수 있어요.
             </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              로그인하면 <Link href="/terms" className="underline">이용약관</Link>과{" "}
+              <Link href="/privacy" className="underline">개인정보처리방침</Link>에 동의하는 것으로 봐요.
+            </p>
+            <LegalLinks />
           </div>
         </section>
       </main>

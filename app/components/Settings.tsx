@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun, UserRoundPen } from "lucide-react";
+import { Monitor, Moon, Sun, UserRoundPen, UserX } from "lucide-react";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { LegalLinks } from "./LegalPage";
 import { findAvatar } from "@/lib/avatars";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -50,7 +53,9 @@ export default function Settings({ ctx, avatarId, onAvatarSaved }: { ctx: Ctx; a
 
         <EnabledCard ctx={ctx} />
         <RecipientsCard ctx={ctx} />
+        {!profile.is_admin && <WithdrawCard ctx={ctx} />}
       </div>
+      <LegalLinks className="mt-8" />
 
       {profile.is_admin && (
         <section className="mt-8 space-y-4">
@@ -66,5 +71,47 @@ export default function Settings({ ctx, avatarId, onAvatarSaved }: { ctx: Ctx; a
         </section>
       )}
     </>
+  );
+}
+
+/** 회원 탈퇴: 이 서비스의 내 데이터를 모두 지우고 로그아웃 */
+function WithdrawCard({ ctx }: { ctx: Ctx }) {
+  const { supabase, session } = ctx;
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const withdraw = async () => {
+    setBusy(true);
+    const r = await fetch("/api/me/delete", { method: "POST", headers: { Authorization: `Bearer ${session.access_token}` } });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok || !j.ok) {
+      toast.error(j.error || `탈퇴 실패 (${r.status})`);
+      return;
+    }
+    toast.success("탈퇴했어요. 그동안 이용해 주셔서 고마워요.");
+    await supabase.auth.signOut();
+  };
+
+  return (
+    <SectionCard title="회원 탈퇴" description="알림 설정, 키워드, 수신 주소, 발송 이력이 모두 지워지고 되돌릴 수 없어요.">
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" className="text-destructive"><UserX /> 회원 탈퇴</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>정말 탈퇴할까요?</DialogTitle>
+            <DialogDescription>
+              이 서비스에 저장된 내 데이터가 모두 바로 지워지고 알림 메일도 더 이상 가지 않아요. 다시 쓰려면 새로 가입 승인을 받아야 해요.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>취소</Button>
+            <Button variant="destructive" onClick={withdraw} disabled={busy}>{busy ? "처리 중…" : "탈퇴하기"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SectionCard>
   );
 }
