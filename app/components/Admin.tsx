@@ -80,7 +80,9 @@ export default function Admin({ ctx, onCrawled, notices }: { ctx: Ctx; onCrawled
       const j = await res.json().catch(() => ({}));
       if (j.ok)
         toast.success(
-          j.mailPaused ? `완료: 신규 공지 ${j.newNotices}건 · 발송 일시정지 중이라 메일은 보내지 않았어요` : `완료: 신규 공지 ${j.newNotices}건, 메일 ${j.emailsSent}통`,
+          j.mailPaused
+            ? `완료: 신규 공지 ${j.newNotices}건 · 발송 일시정지 중이라 메일은 보내지 않았어요`
+            : `완료: 신규 공지 ${j.newNotices}건, 메일 ${j.emailsSent}통${j.failed ? ` · 실패 ${j.failed}명(실행 기록 참고)` : ""}${j.deferred ? ` · ${j.deferred}명은 다음 실행 때` : ""}`,
           { id },
         );
       else toast.error("실행 실패", { id, description: String(j.error ?? res.status) });

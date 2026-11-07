@@ -6,6 +6,10 @@ export const MAX_ATTEMPTS = 5;
 export const RESEND_GAP_MS = 60_000;
 export const DAY_MS = 24 * 60 * 60_000;
 export const MAX_PER_DAY = 10;
+// 카카오 계정을 여러 개 만들어 관리자 Gmail로 아무 주소에나 코드를 보내는 것을 막는 전체 제한
+export const HOUR_MS = 60 * 60_000;
+export const MAX_SENDERS_PER_HOUR = 20; // 최근 1시간 동안 코드를 받은 (다른) 계정 수
+export const MAX_OTHERS_SAME_EMAIL_PER_DAY = 2; // 같은 주소로 최근 24시간에 코드를 보낸 다른 계정 수
 
 export type VerificationRow = {
   email: string;
@@ -35,6 +39,13 @@ export function sendWindow(prev: VerificationRow | null, now: number): { error: 
   if (now - Date.parse(prev.window_start) >= DAY_MS) return { window_start: new Date(now).toISOString(), window_count: 1 };
   if (prev.window_count >= MAX_PER_DAY) return { error: "오늘은 인증 코드를 더 보낼 수 없어요. 내일 다시 시도해 주세요." };
   return { window_start: prev.window_start, window_count: prev.window_count + 1 };
+}
+
+/** 계정 여러 개를 이용한 남용인지. 막아야 하면 사용자에게 보일 이유를 돌려준다 */
+export function abuseCheck({ othersLastHour, othersSameEmailToday }: { othersLastHour: number; othersSameEmailToday: number }): string | null {
+  if (othersSameEmailToday >= MAX_OTHERS_SAME_EMAIL_PER_DAY) return "이 주소로는 오늘 더 보낼 수 없어요. 다른 주소를 쓰거나 내일 다시 시도해 주세요.";
+  if (othersLastHour >= MAX_SENDERS_PER_HOUR) return "지금은 인증 요청이 많아요. 잠시 후 다시 시도해 주세요.";
+  return null;
 }
 
 /** 입력한 코드 확인 결과 */

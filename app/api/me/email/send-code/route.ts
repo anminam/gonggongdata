@@ -1,6 +1,6 @@
 import { adminClient, userFromRequest } from "@/lib/supabase";
 import { sendMail, MAIL_COLORS as C } from "@/lib/mailer";
-import { CODE_TTL_MS, hashCode, makeCode, normalizeEmail, sendWindow, type VerificationRow } from "@/lib/emailVerify";
+import { abuseCheck, CODE_TTL_MS, DAY_MS, HOUR_MS, hashCode, makeCode, normalizeEmail, sendWindow, type VerificationRow } from "@/lib/emailVerify";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +17,18 @@ export async function POST(req: Request) {
   if (error) return Response.json({ error: "잠시 후 다시 시도해 주세요." }, { status: 500 });
   const win = sendWindow(prev as VerificationRow | null, Date.now());
   if ("error" in win) return Response.json({ error: win.error }, { status: 429 });
+
+  // 다른 계정까지 합친 제한 (표는 계정마다 한 줄이라 '최근에 코드를 받은 다른 계정 수'를 센다)
+  const nowMs = Date.now();
+  const [others, sameEmail] = await Promise.all([
+    db.from("gd_email_verifications").select("user_id", { count: "exact", head: true })
+      .neq("user_id", me.user_id).gt("sent_at", new Date(nowMs - HOUR_MS).toISOString()),
+    db.from("gd_email_verifications").select("user_id", { count: "exact", head: true })
+      .neq("user_id", me.user_id).eq("email", email).gt("sent_at", new Date(nowMs - DAY_MS).toISOString()),
+  ]);
+  if (others.error || sameEmail.error) return Response.json({ error: "잠시 후 다시 시도해 주세요." }, { status: 500 });
+  const abuse = abuseCheck({ othersLastHour: others.count ?? 0, othersSameEmailToday: sameEmail.count ?? 0 });
+  if (abuse) return Response.json({ error: abuse }, { status: 429 });
 
   const code = makeCode();
   const now = new Date();

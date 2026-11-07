@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_ATTEMPTS, MAX_PER_DAY, checkCode, hashCode, makeCode, normalizeEmail, sendWindow, type VerificationRow } from "@/lib/emailVerify";
+import { MAX_ATTEMPTS, MAX_OTHERS_SAME_EMAIL_PER_DAY, MAX_PER_DAY, MAX_SENDERS_PER_HOUR, abuseCheck, checkCode, hashCode, makeCode, normalizeEmail, sendWindow, type VerificationRow } from "@/lib/emailVerify";
 
 const now = Date.parse("2026-11-06T03:00:00Z");
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -43,4 +43,17 @@ describe("checkCode", () => {
   it("만료", () => expect(checkCode(row({ expires_at: iso(now) }), "u1", "123456", now)).toBe("expired"));
   it("시도 초과면 맞아도 잠김", () => expect(checkCode(row({ attempts: MAX_ATTEMPTS }), "u1", "123456", now)).toBe("locked"));
   it("기록 없음", () => expect(checkCode(null, "u1", "123456", now)).toBe("none"));
+});
+
+describe("abuseCheck: 계정 여러 개로 우회하는 남용 막기", () => {
+  it("평소에는 통과", () => {
+    expect(abuseCheck({ othersLastHour: 0, othersSameEmailToday: 0 })).toBeNull();
+    expect(abuseCheck({ othersLastHour: MAX_SENDERS_PER_HOUR - 1, othersSameEmailToday: MAX_OTHERS_SAME_EMAIL_PER_DAY - 1 })).toBeNull();
+  });
+  it("같은 주소로 다른 계정들이 이미 여러 번 보냈으면 막는다", () => {
+    expect(abuseCheck({ othersLastHour: 0, othersSameEmailToday: MAX_OTHERS_SAME_EMAIL_PER_DAY })).toMatch("이 주소로는");
+  });
+  it("최근 1시간 전체 요청이 많으면 막는다", () => {
+    expect(abuseCheck({ othersLastHour: MAX_SENDERS_PER_HOUR, othersSameEmailToday: 0 })).toMatch("요청이 많아요");
+  });
 });

@@ -12,6 +12,25 @@ const LOOKBACK_DAYS = 7; // 키워드를 새로 추가한 사용자도 최근 7�
 // (서버 실행 시간 60초 제한 때문에 최대 페이지 수를 둔다)
 export const MAX_PAGES = 3;
 
+// 동시 실행 막기: 'running' 기록은 하나만 있을 수 있다(DB 고유 인덱스).
+// 서버 시간 제한(60초)으로 'running'에 멈춘 기록은 이 시간이 지나면 정리해서 잠금을 푼다
+export const RUN_STALE_MS = 3 * 60_000;
+export const BUSY_MESSAGE = "이미 다른 실행이 진행 중이에요. 잠시 후 다시 시도해 주세요.";
+// 60초 안에 기록까지 끝내도록 발송은 시작 후 45초까지만, 3명씩 동시에. 못 보낸 사람은 기록이 없으니 다음 실행 때 받는다
+export const SEND_BUDGET_MS = 45_000;
+export const SEND_CONCURRENCY = 3;
+
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** items를 최대 limit개씩 동시에 처리 */
+async function eachLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await fn(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
 type Db = ReturnType<typeof adminClient>;
 
 /** 새 공지 목록: 1페이지부터 읽다가 이미 저장된 공지가 하나라도 나오거나 마지막 페이지면 멈춘다 */
@@ -56,9 +75,21 @@ export async function recentNotices(db = adminClient()) {
 /** 1) 크롤링 → 2) 신규 공지 저장 → 3) 사용자별 매칭 & 발송 */
 export async function runDaily() {
   const db = adminClient();
-  const { data: log } = await db.from("gd_run_logs").insert({}).select("id").single();
+  const started = Date.now();
+  await db
+    .from("gd_run_logs")
+    .update({ status: "error", finished_at: new Date(started).toISOString(), error: "시간 초과로 중단됨" })
+    .eq("status", "running")
+    .lt("started_at", new Date(started - RUN_STALE_MS).toISOString());
+  const { data: log, error: lockErr } = await db.from("gd_run_logs").insert({}).select("id").single();
+  if (lockErr) {
+    if (lockErr.code === "23505") return { ok: false as const, error: BUSY_MESSAGE };
+    throw lockErr;
+  }
   let newCount = 0;
   let emails = 0;
+  const failures: string[] = [];
+  let deferred = 0;
   try {
     // 1. 목록 (필요하면 여러 페이지)
     const { fresh } = await collectFreshNotices(db);
@@ -84,19 +115,39 @@ export async function runDaily() {
     const settings = await loadAppSettings(db);
     if (!settings.mail_paused) {
       const notices = await recentNotices(db);
-      for (const u of await loadAlertUsers(db)) {
-        const r = await deliverToUser(db, u, notices, { resend: false, subjectTemplate: settings.subject_template });
-        if (r.status === "sent") emails++;
-      }
+      // 한 사람이 실패해도 나머지에게는 계속 보낸다
+      await eachLimited(await loadAlertUsers(db), SEND_CONCURRENCY, async (u) => {
+        if (Date.now() - started > SEND_BUDGET_MS) {
+          deferred++;
+          return;
+        }
+        try {
+          const r = await deliverToUser(db, u, notices, { resend: false, subjectTemplate: settings.subject_template });
+          if (r.status === "sent") emails++;
+        } catch (e) {
+          console.error("deliver fail", u.user_id, e);
+          failures.push(`${u.email || u.user_id}: ${errMsg(e)}`);
+        }
+      });
     }
 
+    const problems = [
+      ...(failures.length ? [`발송 실패 ${failures.length}명 (${failures.slice(0, 3).join(" / ")})`] : []),
+      ...(deferred ? [`시간이 모자라 ${deferred}명은 다음 실행 때 보냄`] : []),
+    ];
     await db
       .from("gd_run_logs")
-      .update({ status: "success", finished_at: new Date().toISOString(), new_notices: newCount, emails_sent: emails })
+      .update({
+        status: "success",
+        finished_at: new Date().toISOString(),
+        new_notices: newCount,
+        emails_sent: emails,
+        error: problems.length ? problems.join(" · ") : null,
+      })
       .eq("id", log?.id);
-    return { ok: true, newNotices: newCount, emailsSent: emails, mailPaused: settings.mail_paused };
+    return { ok: true as const, newNotices: newCount, emailsSent: emails, failed: failures.length, deferred, mailPaused: settings.mail_paused };
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errMsg(e);
     await db
       .from("gd_run_logs")
       .update({ status: "error", finished_at: new Date().toISOString(), new_notices: newCount, emails_sent: emails, error: msg })
@@ -177,16 +228,16 @@ export async function deliverToUser(db: Db, u: AlertUser, notices: NoticeRow[], 
   if (!hits.length) return { ...base, status: "skipped", count: 0, reason: resend ? "최근 7일 걸린 공지 없음" : "새 공지 없음" };
 
   await sendMail(u.recipients, renderEmail(hits, false, subjectTemplate));
-  const { error } = await db.from("gd_deliveries").upsert(
-    hits.map((h) => ({
-      user_id: u.user_id,
-      notice_id: h.notice_id,
-      matched_keywords: h.matched,
-      recipients: u.recipients,
-      sent_at: new Date().toISOString(),
-    })),
-    { onConflict: "user_id,notice_id" },
-  );
+  const rows = hits.map((h) => ({
+    user_id: u.user_id,
+    notice_id: h.notice_id,
+    matched_keywords: h.matched,
+    recipients: u.recipients,
+    sent_at: new Date().toISOString(),
+  }));
+  // 메일은 이미 나갔으니 기록이 빠지면 다음 날 또 간다 → 저장 실패 시 한 번 더 시도
+  let { error } = await db.from("gd_deliveries").upsert(rows, { onConflict: "user_id,notice_id" });
+  if (error) ({ error } = await db.from("gd_deliveries").upsert(rows, { onConflict: "user_id,notice_id" }));
   if (error) throw error;
   return { ...base, status: "sent", count: hits.length };
 }
