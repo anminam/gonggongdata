@@ -83,7 +83,7 @@ Regular users only sign in with basic profile scopes (email, profile).
 이메일은 꼭 받을 필요가 없다(없으면 서비스 안에서 6자리 코드로 인증). 다만 Supabase가 이메일 권한을 항상 요청해서 **개인 개발자 비즈 앱으로 전환하고 이메일을 "선택 동의"로 켜 두었다.** 동의항목 검수는 필요 없다(필수 동의가 아니므로).
 
 ### 2.0 지금 상태 (2026-11-07 설정함)
-- 카카오 앱: **공공데이터 API 공지 알림 (앱 ID 1640805)**, 회사명 안훈민, 카테고리 생산성/도구, 대표 도메인 https://gonggongdata.anminam.com
+- 카카오 앱: **공공데이터 API 공지 알림 (앱 ID 1640805)**, 회사명 안미남인더하우스, 카테고리 생산성/도구, 대표 도메인 https://gonggongdata.anminam.com
 - 카카오 로그인: ON
 - REST API 키의 카카오 로그인 리다이렉트 URI: `https://jucqpfazhlrnrohkfiyg.supabase.co/auth/v1/callback`
 - 클라이언트 시크릿: 기본 활성화(ON)

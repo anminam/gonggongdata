@@ -8,7 +8,7 @@ export default function PrivacyPage() {
     <LegalPage title="개인정보처리방침" updated="2026년 11월 7일">
       <section>
         <p>
-          공공데이터 API 공지 알림(https://gonggongdata.anminam.com, 이하 &ldquo;서비스&rdquo;)은 개인 개발자 안훈민(이하 &ldquo;운영자&rdquo;)이
+          공공데이터 API 공지 알림(https://gonggongdata.anminam.com, 이하 &ldquo;서비스&rdquo;)은 안미남인더하우스(대표 안훈민, 이하 &ldquo;운영자&rdquo;)가
           운영합니다. 운영자는 「개인정보 보호법」에 따라 이용자의 개인정보를 보호하고 관련 고충을 원활하게 처리하기 위해 다음과 같이 개인정보처리방침을 둡니다.
         </p>
       </section>
@@ -173,7 +173,7 @@ export default function PrivacyPage() {
       <section>
         <h2>11. 개인정보 보호책임자</h2>
         <ul>
-          <li>성명: 안훈민 (운영자)</li>
+          <li>성명: 안훈민 (안미남인더하우스 대표)</li>
           <li>이메일: <a className="underline" href="mailto:minamhunmin@gmail.com">minamhunmin@gmail.com</a></li>
         </ul>
         <p>

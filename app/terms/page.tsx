@@ -9,7 +9,7 @@ export default function TermsPage() {
       <section>
         <h2>제1조 (목적)</h2>
         <p>
-          이 약관은 개인 개발자 안훈민(이하 &ldquo;운영자&rdquo;)이 제공하는 공공데이터 API 공지 알림(https://gonggongdata.anminam.com, 이하 &ldquo;서비스&rdquo;)의
+          이 약관은 안미남인더하우스(대표 안훈민, 이하 &ldquo;운영자&rdquo;)가 제공하는 공공데이터 API 공지 알림(https://gonggongdata.anminam.com, 이하 &ldquo;서비스&rdquo;)의
           이용 조건과 절차, 운영자와 이용자의 권리·의무를 정합니다.
         </p>
       </section>
