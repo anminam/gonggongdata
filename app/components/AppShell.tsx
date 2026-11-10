@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { AlertRule } from "@/lib/match";
 import type { Session } from "@supabase/supabase-js";
 import { useTheme } from "next-themes";
 import {
-  Bell, ChevronsUpDown, FileText, History as HistoryIcon, LayoutDashboard, UserRoundPen, LogOut, Monitor, Moon, Settings as SettingsIcon, Shield, Sun,
+  ArrowLeft, Bell, ChevronsUpDown, FileText, History as HistoryIcon, LayoutDashboard, UserRoundPen, LogOut, Monitor, Moon, Settings as SettingsIcon, Shield, Sun,
 } from "lucide-react";
 import type { browserClient } from "@/lib/supabase";
 import {
@@ -31,8 +31,11 @@ import History from "./History";
 import Admin from "./Admin";
 import Settings from "./Settings";
 
-export type Page = "overview" | "notices" | "alerts" | "history" | "admin" | "settings";
-export type NoticeFilter = { type?: string; mine?: boolean };
+import {
+  closeNavigationOverlay, goBack, navigate, navigationHash, navigationSnapshot, openNavigationOverlay,
+  parseNavigation, serverNavigationSnapshot, subscribeNavigation, type Page, type NoticeFilter,
+} from "@/lib/navigation";
+export type { Page, NoticeFilter } from "@/lib/navigation";
 
 const NAV: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "대시보드", icon: LayoutDashboard },
@@ -46,14 +49,16 @@ export default function AppShell({
 }: {
   supabase: ReturnType<typeof browserClient>; session: Session; profile: Profile; onLogout: () => void;
 }) {
-  const [page, setPage] = useState<Page>("overview");
+  const hash = useSyncExternalStore(subscribeNavigation, navigationSnapshot, serverNavigationSnapshot);
+  const navigation = useMemo(() => parseNavigation(hash), [hash]);
+  const page = navigation.page === "admin" && !profile.is_admin ? "overview" : navigation.page;
+  const noticeFilter = navigation.filter;
   const [notices, setNotices] = useState<Notice[] | null>(null);
   const [keywords, setKeywords] = useState<ListItem[]>([]);
   const [orgs, setOrgs] = useState<ListItem[]>([]);
   const [searchBody, setSearchBody] = useState(false);
   const [notifyTypes, setNotifyTypes] = useState<string[] | null>(null);
   const [receiveAll, setReceiveAll] = useState(false);
-  const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>({});
   const [avatarId, setAvatarId] = useState<string | undefined>(findAvatar(session.user.user_metadata.gd_avatar)?.id);
 
   const loadNotices = useCallback(async () => {
@@ -91,8 +96,7 @@ export default function AppShell({
     [keywords, orgs, searchBody, notifyTypes, receiveAll],
   );
   const go = (p: Page, filter: NoticeFilter = {}) => {
-    setNoticeFilter(filter);
-    setPage(p);
+    navigate({ page: p, filter });
     document.querySelector('[data-slot="sidebar-inset"]')?.scrollTo(0, 0);
   };
   const current = [...NAV, { id: "admin" as Page, label: "관리자" }, { id: "settings" as Page, label: "설정" }].find((n) => n.id === page)!;
@@ -100,11 +104,15 @@ export default function AppShell({
   return (
     // 문서 전체가 아니라 본문(SidebarInset)만 스크롤: 태블릿 크롬에서 주소창이 줄며 높이가 바뀌어 메뉴가 같이 밀리는 문제 방지
     // fixed inset-0: 문서 자체 높이를 0으로 만들어 크롬이 주소창을 접을(=문서 스크롤) 여지를 없앤다
-    <SidebarProvider className="fixed inset-0 min-h-0 overflow-hidden">
+    <SidebarProvider openMobile={navigation.overlay === "menu"} onOpenMobileChange={(open) => {
+      if (open) openNavigationOverlay("menu");
+      else closeNavigationOverlay();
+    }} className="fixed inset-0 min-h-0 overflow-hidden">
       <AppSidebar supabase={supabase} session={session} page={page} go={go} profile={profile} onLogout={onLogout} avatarId={avatarId} setAvatarId={setAvatarId} noticeCount={notices?.length} keywordCount={keywords.length + orgs.length} />
       <SidebarInset className="min-h-0 overflow-y-auto overscroll-contain">
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
           <SidebarTrigger className="-ml-1" />
+          {page !== "overview" && <Button variant="ghost" size="icon" aria-label="이전 화면으로" onClick={goBack}><ArrowLeft className="size-4" /></Button>}
           <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
           <span className="text-sm text-muted-foreground">공공데이터 알림</span>
           <span className="text-sm text-muted-foreground">/</span>
@@ -115,7 +123,7 @@ export default function AppShell({
         </header>
         <div className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 md:p-8">
           {page === "overview" && <Overview ctx={ctx} notices={notices} rule={rule} go={go} />}
-          {page === "notices" && <Notices ctx={ctx} notices={notices} rule={rule} initial={noticeFilter} />}
+          {page === "notices" && <Notices key={navigationHash({ page: "notices", filter: noticeFilter })} ctx={ctx} notices={notices} rule={rule} initial={noticeFilter} noticeId={navigation.noticeId} />}
           {page === "alerts" && (
             <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} receiveAll={receiveAll} reload={loadMine} />
           )}
@@ -134,11 +142,7 @@ function AppSidebar({
   supabase: ReturnType<typeof browserClient>; session: Session; avatarId?: string; setAvatarId: (id: string) => void;
   page: Page; go: (p: Page) => void; profile: Profile; onLogout: () => void; noticeCount?: number; keywordCount: number;
 }) {
-  const { isMobile, setOpenMobile } = useSidebar();
-  const nav = (p: Page) => {
-    go(p);
-    if (isMobile) setOpenMobile(false);
-  };
+  const nav = (p: Page) => go(p);
   const badge: Partial<Record<Page, number | undefined>> = { notices: noticeCount, alerts: keywordCount || undefined };
 
   return (
@@ -203,7 +207,9 @@ function UserMenu({ profile, onLogout, supabase, avatarId, setAvatarId, onSettin
   profile: Profile; onLogout: () => void; supabase: ReturnType<typeof browserClient>;
   avatarId?: string; setAvatarId: (id: string) => void; onSettings: () => void;
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const hash = useSyncExternalStore(subscribeNavigation, navigationSnapshot, serverNavigationSnapshot);
+  const pickerOpen = parseNavigation(hash).overlay === "avatar";
+  const setPickerOpen = (open: boolean) => open ? openNavigationOverlay("avatar") : closeNavigationOverlay();
   const avatar = findAvatar(avatarId);
   const { isMobile } = useSidebar();
   const { theme, setTheme } = useTheme();

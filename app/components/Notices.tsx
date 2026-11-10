@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { closeNotice, openNotice } from "@/lib/navigation";
 import NoticeSend from "./NoticeSend";
 import { type Ctx, daysAgo, fmtDateTime, Kw, Notice, NOTICE_TYPES, PageHeader, TypeBadge } from "./shared";
 
@@ -24,9 +25,9 @@ type Period = "7" | "30" | "all";
 const PAGE = 50;
 
 export default function Notices({
-  ctx, notices, rule, initial,
+  ctx, notices, rule, initial, noticeId,
 }: {
-  ctx: Ctx; notices: Notice[] | null; rule: AlertRule; initial: { type?: string; mine?: boolean };
+  noticeId?: string; ctx: Ctx; notices: Notice[] | null; rule: AlertRule; initial: { type?: string; mine?: boolean };
 }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState(initial.type ?? "all");
@@ -34,7 +35,7 @@ export default function Notices({
   const [period, setPeriod] = useState<Period>("all");
   const [mine, setMine] = useState(!!initial.mine);
   const [shown, setShown] = useState(PAGE);
-  const [open, setOpen] = useState<Notice | null>(null);
+  const open = notices?.find((n) => n.notice_id === noticeId) ?? null;
   const list = notices ?? [];
   const hasRule = hasAnyRule(rule);
 
@@ -133,7 +134,7 @@ export default function Notices({
               </TableHeader>
               <TableBody>
                 {rows.slice(0, shown).map(({ n, hit }) => (
-                  <TableRow key={n.notice_id} className="cursor-pointer" onClick={() => setOpen(n)}>
+                  <TableRow key={n.notice_id} className="cursor-pointer" onClick={() => openNotice(n.notice_id)}>
                     <TableCell className="pl-4 align-top tabular-nums text-muted-foreground">{n.registered_at ?? "-"}</TableCell>
                     <TableCell className="align-top"><TypeBadge type={n.notice_type} /></TableCell>
                     <TableCell className="max-w-0 whitespace-normal">
@@ -161,7 +162,7 @@ export default function Notices({
         )}
       </Card>
 
-      <NoticeSheet ctx={ctx} n={open} rule={rule} onClose={() => setOpen(null)} />
+      <NoticeSheet ctx={ctx} n={open} rule={rule} onClose={closeNotice} />
     </>
   );
 }
