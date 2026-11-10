@@ -115,7 +115,7 @@ export default function AppShell({
         </header>
         <div className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 md:p-8">
           {page === "overview" && <Overview ctx={ctx} notices={notices} rule={rule} go={go} />}
-          {page === "notices" && <Notices notices={notices} rule={rule} initial={noticeFilter} />}
+          {page === "notices" && <Notices ctx={ctx} notices={notices} rule={rule} initial={noticeFilter} />}
           {page === "alerts" && (
             <Alerts ctx={ctx} notices={notices ?? []} keywords={keywords} orgs={orgs} searchBody={searchBody} notifyTypes={notifyTypes} receiveAll={receiveAll} reload={loadMine} />
           )}

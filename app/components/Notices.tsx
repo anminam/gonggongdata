@@ -17,15 +17,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { daysAgo, fmtDateTime, Kw, Notice, NOTICE_TYPES, PageHeader, TypeBadge } from "./shared";
+import NoticeSend from "./NoticeSend";
+import { type Ctx, daysAgo, fmtDateTime, Kw, Notice, NOTICE_TYPES, PageHeader, TypeBadge } from "./shared";
 
 type Period = "7" | "30" | "all";
 const PAGE = 50;
 
 export default function Notices({
-  notices, rule, initial,
+  ctx, notices, rule, initial,
 }: {
-  notices: Notice[] | null; rule: AlertRule; initial: { type?: string; mine?: boolean };
+  ctx: Ctx; notices: Notice[] | null; rule: AlertRule; initial: { type?: string; mine?: boolean };
 }) {
   const [q, setQ] = useState("");
   const [type, setType] = useState(initial.type ?? "all");
@@ -160,12 +161,12 @@ export default function Notices({
         )}
       </Card>
 
-      <NoticeSheet n={open} rule={rule} onClose={() => setOpen(null)} />
+      <NoticeSheet ctx={ctx} n={open} rule={rule} onClose={() => setOpen(null)} />
     </>
   );
 }
 
-function NoticeSheet({ n, rule, onClose }: { n: Notice | null; rule: AlertRule; onClose: () => void }) {
+function NoticeSheet({ ctx, n, rule, onClose }: { ctx: Ctx; n: Notice | null; rule: AlertRule; onClose: () => void }) {
   const c = n ? classify(n.title, n.body ?? "") : null;
   const hit = n ? matchNotice(n, rule) : [];
   return (
@@ -196,6 +197,7 @@ function NoticeSheet({ n, rule, onClose }: { n: Notice | null; rule: AlertRule; 
                 <Button asChild className="w-full sm:w-auto">
                   <a href={n.url} target="_blank" rel="noreferrer">공지 원문 보기 <ExternalLink /></a>
                 </Button>
+                {ctx.profile.is_admin && ctx.profile.status === "approved" && <NoticeSend key={n.notice_id} ctx={ctx} notice={n} />}
                 {n.body && (
                   <>
                     <Separator />
