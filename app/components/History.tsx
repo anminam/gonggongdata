@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Clock, Inbox, MailCheck, Search, Send } from "lucide-react";
+import { CalendarClock, Clock, ExternalLink, Inbox, MailCheck, Search, Send } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Ctx, fmtDateTime, Kw, PageHeader, StatCard, TypeBadge } from "./shared";
 
@@ -26,23 +26,36 @@ export default function History({ ctx }: { ctx: Ctx }) {
   const [rows, setRows] = useState<Delivery[] | null>(null);
   const [emails, setEmails] = useState<Map<string, string>>(new Map());
   const [q, setQ] = useState("");
-  const all = scope === "all";
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  const all = profile.is_admin && scope === "all";
 
   useEffect(() => {
+    let cancelled = false;
     setRows(null);
+    setError("");
     let query = supabase
       .from("gd_deliveries")
       .select("id, user_id, notice_id, matched_keywords, recipients, sent_at, gd_notices(title, url, notice_type, org)")
       .order("sent_at", { ascending: false })
       .limit(500);
     if (!all) query = query.eq("user_id", profile.user_id);
-    query.then(({ data }) => setRows((data ?? []) as unknown as Delivery[]));
-  }, [supabase, profile.user_id, all]);
+    query.then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) setError("발송 이력을 불러오지 못했어요. 다시 시도해 주세요.");
+      else setRows((data ?? []) as unknown as Delivery[]);
+    });
+    return () => { cancelled = true; };
+  }, [supabase, profile.user_id, all, reload]);
 
   useEffect(() => {
     if (!all) return;
-    supabase.from("gd_profiles").select("user_id, email").then(({ data }) => setEmails(new Map((data ?? []).map((p) => [p.user_id, p.email]))));
-  }, [supabase, all]);
+    let cancelled = false;
+    supabase.from("gd_profiles").select("user_id, email").then(({ data }) => {
+      if (!cancelled) setEmails(new Map((data ?? []).map((p) => [p.user_id, p.email])));
+    });
+    return () => { cancelled = true; };
+  }, [supabase, all, reload]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -61,7 +74,7 @@ export default function History({ ctx }: { ctx: Ctx }) {
     <>
       <PageHeader
         title="발송 이력"
-        description="키워드에 걸려 메일로 보낸 공지 기록이에요. 테스트 메일은 기록되지 않아요."
+        description="보낸 공지와 발송 당시의 실제 수신 주소를 확인해요. 테스트 메일은 기록되지 않아요."
         action={
           profile.is_admin ? (
             <Tabs value={scope} onValueChange={(v) => setScope(v as "mine" | "all")}>
@@ -74,9 +87,9 @@ export default function History({ ctx }: { ctx: Ctx }) {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard icon={MailCheck} label="보낸 공지" value={rows ? rows.length : "…"} hint="최근 500건 기준" />
-        <StatCard icon={Send} label="보낸 메일" value={rows ? mailCount : "…"} hint="같은 날 공지는 1통으로 묶어 보내요" />
+        <StatCard icon={Send} label="보낸 메일" value={rows ? mailCount : "…"} hint="동일 사용자·발송 분 기준 추정" />
         <StatCard icon={Clock} label="마지막 발송" value={<span className="text-lg">{last ? fmtDateTime(last) : "–"}</span>} />
         <StatCard icon={CalendarClock} label="발송 시각" value={<span className="text-lg">매일 14:00</span>} hint="한국 시간" />
       </div>
@@ -89,7 +102,12 @@ export default function History({ ctx }: { ctx: Ctx }) {
           </InputGroup>
         </CardHeader>
         <CardContent className="px-0">
-          {rows === null ? (
+          {error ? (
+            <div role="alert" className="space-y-3 p-5 text-sm">
+              <p>{error}</p>
+              <Button variant="outline" size="sm" onClick={() => setReload((n) => n + 1)}>다시 불러오기</Button>
+            </div>
+          ) : rows === null ? (
             <div className="space-y-2 p-4">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : !filtered.length ? (
             <Empty>
@@ -100,38 +118,50 @@ export default function History({ ctx }: { ctx: Ctx }) {
               </EmptyHeader>
             </Empty>
           ) : (
-            <Table>
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead className="w-[160px] pl-4">발송 시각</TableHead>
-                  <TableHead>공지</TableHead>
-                  <TableHead className="w-[170px]">매칭 키워드</TableHead>
-                  <TableHead className="hidden w-[220px] pr-4 md:table-cell">{all ? "사용자 · 수신처" : "수신처"}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="pl-4 align-top tabular-nums text-muted-foreground">{fmtDateTime(r.sent_at)}</TableCell>
-                    <TableCell className="max-w-0 whitespace-normal">
-                      {r.gd_notices ? (
-                        <a href={r.gd_notices.url} target="_blank" rel="noreferrer" className="font-medium leading-snug hover:underline">{r.gd_notices.title}</a>
-                      ) : (
-                        <span className="font-medium">{r.notice_id}</span>
-                      )}
-                      <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                        <TypeBadge type={r.gd_notices?.notice_type ?? null} /> {r.gd_notices?.org}
+            <ul className="divide-y" aria-label="발송 기록">
+              {filtered.map((r) => (
+                <li key={r.id} className="min-w-0 p-4 sm:p-5">
+                  <article className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:gap-6">
+                    <div className="min-w-0 space-y-3">
+                      <p className="text-sm tabular-nums text-muted-foreground">
+                        <span className="mr-2">발송</span><time dateTime={r.sent_at}>{fmtDateTime(r.sent_at)}</time>
+                      </p>
+                      <h2 className="text-base font-medium leading-7 [overflow-wrap:anywhere] sm:text-lg">
+                        {r.gd_notices ? (
+                          <a href={r.gd_notices.url} target="_blank" rel="noreferrer" className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
+                            {r.gd_notices.title}<ExternalLink aria-hidden="true" className="ml-1.5 inline size-3.5 align-baseline text-muted-foreground" />
+                          </a>
+                        ) : r.notice_id}
+                      </h2>
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
+                        <TypeBadge type={r.gd_notices?.notice_type ?? null} />
+                        {r.gd_notices?.org && <span className="[overflow-wrap:anywhere]">{r.gd_notices.org}</span>}
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top whitespace-normal"><Kw list={r.matched_keywords} /></TableCell>
-                    <TableCell className="hidden pr-4 align-top text-xs whitespace-normal text-muted-foreground md:table-cell">
-                      {all && <div className="text-sm font-medium text-foreground">{emails.get(r.user_id) ?? "알 수 없음"}</div>}
-                      {(r.recipients ?? []).join(", ") || "-"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <div className="space-y-1.5 text-sm [&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:min-h-5 [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:whitespace-normal [&_[data-slot=badge]]:[overflow-wrap:anywhere]">
+                        <p className="text-xs text-muted-foreground">발송 이유</p>
+                        {r.matched_keywords.length ? <Kw list={r.matched_keywords} /> : <p className="text-muted-foreground">기록 없음</p>}
+                      </div>
+                    </div>
+                    <div className="min-w-0 space-y-3 rounded-lg bg-muted/50 p-3 sm:p-4">
+                      {all && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">사용자 계정</p>
+                          <p className="break-all text-sm">{emails.get(r.user_id) || "계정 정보 확인 불가"}</p>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        <h3 className="flex items-center gap-1.5 text-sm font-medium"><Send aria-hidden="true" className="size-3.5 shrink-0" /> 받는 이메일</h3>
+                        {r.recipients?.length ? (
+                          <ul className="space-y-1 text-sm leading-6">
+                            {r.recipients.map((email, i) => <li key={`${email}-${i}`} className="break-all">{email}</li>)}
+                          </ul>
+                        ) : <p className="text-sm text-muted-foreground">수신 주소 기록이 없어요.</p>}
+                      </div>
+                    </div>
+                  </article>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
